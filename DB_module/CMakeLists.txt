@@ -14,3 +14,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE PostgreSQL::PostgreSQL)
 
 target_compile_options(${PROJECT_NAME} PUBLIC -g -O0 -Wall -Wextra)
 target_link_options(${PROJECT_NAME} PUBLIC -dynamic)
+
+target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
