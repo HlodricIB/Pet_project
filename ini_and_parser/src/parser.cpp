@@ -8,17 +8,10 @@
 Config_searching::Config_searching(const char* config_to_find_): config_to_find(config_to_find_)
 {
     char currentDir[1024];
-    //getcwd(currentDir, sizeof(currentDir));
     char previousDir[1024];
-    //searching_forward(currentDir, previousDir);
-    //std::strcpy(previousDir, currentDir);
     while (!config_founded && level_up <= 3)
     {
         getcwd(currentDir, sizeof(currentDir));
-        {
-            //std::cout  << "\n" << currentDir << " /currentDir/\n";
-            //std::cout << previousDir << " /previousDir/\n" << std::endl;
-        }
         searching_forward(currentDir, previousDir);
         std::strcpy(previousDir, currentDir);
         ++level_up;
@@ -50,7 +43,8 @@ void Config_searching::searching_backward(char* currentDir)
         closedir(dir);
         if (strcmp(currentDir, "/") == 0 && !config_founded)
         {
-            throw c_s_exception("Pet_project_config.ini not founded");
+            std::string error_message = config_to_find + std::string(" not founded");
+            throw c_s_exception(error_message.c_str());
         }
     }
 }
@@ -71,11 +65,6 @@ void Config_searching::searching_forward (const char* currentDir, const char* pr
                 chdir(entry->d_name);
                 char currentDir[1024];
                 getcwd(currentDir, sizeof(currentDir));
-                {
-                    char tcurrentDir[1024];
-                    getcwd(tcurrentDir, sizeof(tcurrentDir));
-                    std::cout << tcurrentDir << " /tcurrentDir/" << std::endl;
-                }
                 searching_forward(currentDir, previousDir);
                 --level_down;
             }
@@ -96,7 +85,7 @@ void Config_searching::searching_forward (const char* currentDir, const char* pr
     closedir(dir);
 }
 
-Parser::Parser(const char* config_filename, const char* section, int n)
+Parser::Parser(const char* config_filename, const char* section)
 {
     boost::property_tree::ptree config;
     try {
@@ -104,14 +93,29 @@ Parser::Parser(const char* config_filename, const char* section, int n)
     }  catch (const boost::property_tree::ini_parser_error& error) {
         std::cout << error.what() << std::endl;
     }
-    const boost::property_tree::ptree& DB = config.get_child(section);
-    values.reserve(n);
-    values.push_back(DB.get<std::string>("host"));
-    values.push_back(DB.get<std::string>("hostaddr"));
-    values.push_back(DB.get<std::string>("port"));
-    values.push_back(DB.get<std::string>("dbname"));
-    values.push_back(DB.get<std::string>("password"));
-    values.push_back(DB.get<std::string>("connect_timeout"));
-    values.push_back(DB.get<std::string>("client_encoding"));
-    values.push_back(DB.get<std::string>("sslmode"));
+    section_ptree = config.get_child(section);
+    int char_i = 0;
+    keywords = new char*[section_ptree.size()];
+    for (auto& i : section_ptree)
+    {
+        keywords[char_i] = new char[i.first.size()];
+        std::strcpy(keywords[char_i], i.first.c_str());
+        //keywords[char_i][i.first.size()] = '\0';
+        ++char_i;
+    }
+}
+
+Parser::~Parser()
+{
+    for (auto i = 0; i != section_ptree.size(); ++i)
+        delete [] keywords[i];
+    delete [] keywords;
+}
+
+void Parser::parsed_info() const
+{
+    for (auto& i : section_ptree)
+    {
+        std::cout << i.first << " = " << i.second.data() << std::endl;
+    }
 }

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <exception>
+#include <memory>
 #include "boost/property_tree/ptree.hpp"
 #include "boost/property_tree/ini_parser.hpp"
 
@@ -35,14 +36,14 @@ public:
 class Parser
 {
 private:
-    //Order of keywords in pet_project_config.ini corresponding to order of values in
-    //std::vector<std::string> values:
-    //host, hostaddr, port, dbname, password, connect timeout, client encoding, sslmode
-    std::vector<std::string> values;
+    boost::property_tree::ptree section_ptree;
+    char** keywords;
 public:
-    Parser(int n) { values.reserve(n); }
-    Parser(const char*, const char*, int);
-    const char* parsed_info_index(std::vector<std::string>::size_type index) const { return values[index].c_str(); }
+    Parser() { }
+    Parser(const char*, const char*);
+    ~Parser();
+    void parsed_info() const;
+    char** parsed_info_ptr() const { return keywords; };
 };
 
 #endif // PARSER_H
