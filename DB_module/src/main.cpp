@@ -24,7 +24,7 @@ int main()
     }
     std::vector<std::string> one_threaded_query;
     s = "SELECT * FROM song_table";
-    for (int i = 0; i != 50; ++i)
+    for (int i = 0; i != 300; ++i)
     {
         one_threaded_query.push_back(s);
     }
@@ -36,14 +36,13 @@ int main()
         DB_module db{ };
         async = async_handle(db, async_query, async_res_m);
         auto start = std::chrono::high_resolution_clock::now();
+        shared_PG_result res;
         for (auto& i : async_res_m)
         {
-            try {
-                i.get()->display_exec_result();
+            res = i.get();
+            if (res)
+                res->display_exec_result();
                 //i.get();
-            }  catch (const std::future_error& e) {
-                std::cerr << e.what() << std::endl;
-            }
         }
         auto stop = std::chrono::high_resolution_clock::now();
         getting = std::chrono::duration<double, std::micro>(stop - start).count();
@@ -164,7 +163,7 @@ void display_exec_result_sync(PGresult* res)
 void fill_table(const char* conninfo)
 {
     PGconn* conn = PQconnectdb(conninfo);
-    for (int i = 0; i != 50; ++i)
+    for (int i = 0; i != 5; ++i)
     {
         PGresult* res = PQexec(conn, "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, 'song1', 001)");
         PQclear(res);

@@ -24,18 +24,7 @@ public:
     explicit connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
     connection_pool(connection_pool&& other): conns_deque(std::move(other.conns_deque)) { }
     ~connection_pool();
-    bool pull_connection(PGconn*& conn) {
-        std::lock_guard<std::mutex> lk(mut);
-        if (conns_deque.empty())
-        {
-            return false;
-        } else
-        {
-            conn = conns_deque.front();
-            conns_deque.pop_front();
-            return true;
-        }
-    }
+    bool pull_connection(PGconn*&);
     void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_back(conn); }
 
     //For standalone module only:
@@ -77,30 +66,15 @@ private:
     std::atomic_bool done{false};
     std::vector<std::thread> threads;
     std::deque<function_wrapper> task_deque;
-    void pull_task(function_wrapper& task) {   //Reference here is because task already created in void worker_thread() function, that defined below
-        task = std::move(task_deque.front());
-        task_deque.pop_front();
-        }
+    void pull_task(function_wrapper&);  //Reference here is because task already created in void worker_thread() function, that defined below
     void starting_threads(size_t);
 public:
     thread_pool();
     thread_pool(size_t);    // If you want to create thread_pool with specified connections amount
     ~thread_pool();
-    void worker_thread()
-    {
-        function_wrapper task;
-        while(!done)
-        {
-            std::unique_lock<std::mutex> lk(mut);
-            data_cond.wait(lk, [this] () -> bool { return (done || !task_deque.empty());});   //Don't want to loop here, I'll wait for notifying condition variable
-            if (done)
-                break;
-            pull_task(task);
-            task();
-        }
-    }
+    void worker_thread();
     bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
-    void push_task(function_wrapper task) { std::lock_guard<std::mutex> lk (mut); task_deque.push_back(std::move(task)); data_cond.notify_one(); }
+    void push_task(function_wrapper&& task) { std::lock_guard<std::mutex> lk (mut); task_deque.push_back(std::move(task)); data_cond.notify_one(); }
 };
 
 class PG_result
@@ -110,13 +84,7 @@ private:
 public:
     PG_result() { }
     PG_result(const std::vector<PGresult*>& res): results(res) { }
-    ~PG_result()
-    {
-        for(auto& res : results)
-        {
-            PQclear(res);
-        }
-    }
+    ~PG_result();
     void display_exec_result();
     PGresult* get_result(int i) { return results[i]; }
 };
@@ -132,7 +100,7 @@ private:
     shared_PG_result async_command_execution(const char*) const;
 public:
     DB_module(std::shared_ptr<Parser> parser_);
-    DB_module(std::shared_ptr<connection_pool> c_pool): conns(c_pool) { }   // If want to use our own created pool with specified connections amount
+    DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module();
     future_result exec_command(const char*) const;
 

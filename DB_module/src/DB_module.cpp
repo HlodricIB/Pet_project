@@ -2,11 +2,13 @@
 #include <chrono>
 #include "DB_module.h"
 
+//*******************************************DB_module*******************************************
+
 //DB_module::DB_module(std::shared_ptr<Parser> p_DB)
 DB_module::DB_module(const char* conninfo)
 {
     auto thread_count = std::thread::hardware_concurrency();
-    auto conn_threads_count = thread_count > 0 ? thread_count : 1;  //Amount of PGconn*
+    auto conn_threads_count = thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn*
     //conns = std::make_shared<connection_pool>(conn_count, p_DB);
     conns = std::make_shared<connection_pool>(conn_threads_count, conninfo);
     threads = std::make_shared<thread_pool>(conn_threads_count);
@@ -21,16 +23,25 @@ DB_module::~DB_module()
 
 future_result DB_module::exec_command(const char* command) const
 {
-    PGconn* conn;
-    while (conns->pull_connection(conn));
+    /*PGconn* conn;
+    //while (!conns->pull_connection(conn));
+    while (true)
+    {
+        if (conns->pull_connection(conn))
+        {
+            break;
+        } else
+        {
+            std::this_thread::yield();
+        }
+    }
     std::promise<shared_PG_result> PG_result_promise;
     future_result res = PG_result_promise.get_future();
     auto send_success = PQsendQuery(conn, command);
     if (send_success != 1)  // If sending command to Postgre server was not succesfull
     {
         //std::cerr << "Command failed" <<std::endl;
-        PG_result_promise.~promise();   //To return an exception object of type std::future_error with an error condition std::future_errc::broken_promise into res
-        return res;
+        PG_result_promise.set_value(nullptr);   //To return an exception object of type std::future_error with an error condition std::future_errc::broken_promise into res
     } else {
         auto lambda = [this, PG_result_promise = std::move(PG_result_promise), conn] () mutable {
             std::vector<PGresult*> vec_res;
@@ -45,20 +56,44 @@ future_result DB_module::exec_command(const char* command) const
                     vec_res.push_back(single_res);
                 }
             }
-            conns->push_connection(conn);
+            conns->push_connection(conn);   // Return connection to pool of connections
             shared_PG_result res = std::make_shared<PG_result>(vec_res);
             PG_result_promise.set_value(res);
-            conns->push_connection(conn);   // Return connection to pool of connections
         };
         threads->push_task(std::move(lambda));
     }
-    return res;
+    return res; // Returning the future, that contains results from the promise*/
+
+    std::promise<shared_PG_result> PG_result_promise;
+    future_result res = PG_result_promise.get_future();
+        auto lambda = [this, PG_result_promise = std::move(PG_result_promise), command] () mutable {
+            PGconn* conn;
+            while (true)
+            {
+                if (conns->pull_connection(conn))
+                {
+                    break;
+                } else
+                {
+                    std::this_thread::yield();
+                }
+            }
+            std::vector<PGresult*> vec_res;
+            vec_res.push_back(PQexec(conn, command));
+            conns->push_connection(conn);   // Return connection to pool of connections
+            shared_PG_result res = std::make_shared<PG_result>(vec_res);
+            PG_result_promise.set_value(res);
+        };
+        threads->push_task(std::move(lambda));
+    return res; // Returning the future, that contains results from the promise
 }
+
+//*******************************************thread_pool*******************************************
 
 thread_pool::thread_pool()
 {
     auto thread_count = std::thread::hardware_concurrency();
-    auto threads_count = thread_count > 0 ? thread_count : 1;  //Amount of threads
+    auto threads_count = thread_count > 0 ? (thread_count * 2) : 1;  //Amount of threads
     starting_threads(threads_count);
 }
 
@@ -92,16 +127,39 @@ thread_pool::~thread_pool()
     }
 }
 
+void thread_pool::pull_task(function_wrapper& task)
+{
+    task = std::move(task_deque.front());
+    task_deque.pop_front();
+}
+
+void thread_pool::worker_thread()
+{
+    function_wrapper task;
+    while(!done)
+    {
+        std::unique_lock<std::mutex> lk(mut);
+        data_cond.wait(lk, [this] () -> bool { return (!task_deque.empty()) || done;});   //Don't want to loop here, I'll wait for notifying condition variable
+        if (done)
+            break;
+        pull_task(task);
+        task();
+    }
+}
+
+//*******************************************connection_pool*******************************************
+
 //connection_pool::connection_pool(std::shared_ptr<Parser> parser)
 connection_pool::connection_pool(size_t conn_count, const char* conninfo)
 {
     int attempts_overall = 20;  //Overall attempts to get needed amount of PGconn*
     std::deque<std::pair<std::future<bool>, PGconn*>> temp_conn;   // Temporary deque to store PGconn* that are not real connections at that time
+    PGconn* conn;
     for (size_t i = 0; i != conn_count; ++i)
     {
         --attempts_overall;
         //PGconn* conn = PQconnectStartParams(p_DB.parsed_info_ptr('k'), p_DB.parsed_info_ptr('v'), 0);
-        PGconn* conn = PQconnectStart(conninfo);    // First of all getting pointers to PGconn which are not real connections at that time
+        conn = PQconnectStart(conninfo);    // First of all getting pointers to PGconn which are not real connections at that time
         if (conn)
         {
             PQsetnonblocking(conn, 1);  //Setting conn connection to nonblocking connection;
@@ -141,6 +199,9 @@ connection_pool::connection_pool(size_t conn_count, const char* conninfo)
         if ((t_conn.first).get())   // If real connection was established, than related PGconn* from temp_conn have to be copied to conns_deque
         {
             conns_deque.push_back(t_conn.second);
+        } else
+        {
+            PQfinish(t_conn.second);
         }
     }
 }
@@ -153,6 +214,22 @@ connection_pool::~connection_pool()
         conns_deque.pop_front();
     }
 }
+
+bool connection_pool::pull_connection(PGconn*& conn)
+{
+    std::lock_guard<std::mutex> lk(mut);
+    if (conns_deque.empty())
+    {
+        return false;
+    } else
+    {
+        conn = conns_deque.front();
+        conns_deque.pop_front();
+        return true;
+    }
+}
+
+//*******************************************PG_result*******************************************
 
 void PG_result::display_exec_result()
 {
@@ -179,6 +256,14 @@ void PG_result::display_exec_result()
             std::cout << std::endl;
             }
         }
+    }
+}
+
+PG_result::~PG_result()
+{
+    for(auto& res : results)
+    {
+        PQclear(res);
     }
 }
 
