@@ -43,35 +43,64 @@ public:
 
 };
 
+class function_wrapper
+{
+private:
+    struct impl_base {
+        virtual void call() = 0;
+        virtual ~impl_base() { }
+    };
+    std::unique_ptr<impl_base> impl;
+    template< typename F>
+    struct impl_type: impl_base {
+        F f;
+        impl_type(F&& f_): f(std::move(f_)) { }
+        void call() override { f(); }
+    };
+public:
+    template<typename F>
+    function_wrapper(F&& f): impl(new impl_type<F>(std::move(f))) { }
+    void operator()() { impl->call(); }
+    function_wrapper() = default;
+    function_wrapper(function_wrapper&& other): impl(std::move(other.impl)) {  }
+    function_wrapper& operator=(function_wrapper&& other) { impl = std::move(other.impl); return *this; }
+    function_wrapper(const function_wrapper&) = delete;
+    function_wrapper(function_wrapper&) = delete;
+    function_wrapper& operator=(const function_wrapper&) = delete;
+};
+
 class thread_pool
 {
 private:
-    std::deque<std::function<void()>> task_deque;
-    std::mutex mut;
+    mutable std::mutex mut;
     std::condition_variable data_cond;
     std::atomic_bool done{false};
-    void pull_task(std::function<void()>& task) {
-        std::lock_guard<std::mutex> lk (mut);
-            task = task_deque.front();
-            task_deque.pop_front();
+    std::vector<std::thread> threads;
+    std::deque<function_wrapper> task_deque;
+    void pull_task(function_wrapper& task) {   //Reference here is because task already created in void worker_thread() function, that defined below
+        task = std::move(task_deque.front());
+        task_deque.pop_front();
         }
+    void starting_threads(size_t);
 public:
     thread_pool();
     thread_pool(size_t);    // If you want to create thread_pool with specified connections amount
+    ~thread_pool();
     void worker_thread()
     {
-        std::function<void()> task;
+        function_wrapper task;
         while(!done)
         {
             std::unique_lock<std::mutex> lk(mut);
-            data_cond.wait(lk, [this] { return this->empty();} );   //Don't want to loop here, I'll wait for notifying condition variable
+            data_cond.wait(lk, [this] () -> bool { return (done || !task_deque.empty());});   //Don't want to loop here, I'll wait for notifying condition variable
+            if (done)
+                break;
             pull_task(task);
             task();
         }
     }
     bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
-    void push_task(std::function<void()>&& task) { std::lock_guard<std::mutex> lk (mut); task_deque.push_back(task); data_cond.notify_one(); }
-    std::condition_variable& cond() { return data_cond; }
+    void push_task(function_wrapper task) { std::lock_guard<std::mutex> lk (mut); task_deque.push_back(std::move(task)); data_cond.notify_one(); }
 };
 
 class PG_result

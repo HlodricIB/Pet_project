@@ -38,8 +38,12 @@ int main()
         auto start = std::chrono::high_resolution_clock::now();
         for (auto& i : async_res_m)
         {
-            //i.get()->display_exec_result();
-            i.get();
+            try {
+                i.get()->display_exec_result();
+                //i.get();
+            }  catch (const std::future_error& e) {
+                std::cerr << e.what() << std::endl;
+            }
         }
         auto stop = std::chrono::high_resolution_clock::now();
         getting = std::chrono::duration<double, std::micro>(stop - start).count();
