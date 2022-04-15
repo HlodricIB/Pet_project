@@ -74,19 +74,19 @@ public:
     ~thread_pool();
     void worker_thread();
     bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
-    void push_task(function_wrapper&& task) { std::lock_guard<std::mutex> lk (mut); task_deque.push_back(std::move(task)); data_cond.notify_one(); }
+    void push_task(function_wrapper&&);
 };
 
 class PG_result
 {
 private:
-    std::vector<PGresult*> results; //Container is because one query may return several results
+    PGresult* result; //Container is because one query may return several results
 public:
     PG_result() { }
-    PG_result(const std::vector<PGresult*>& res): results(res) { }
+    PG_result(PGresult* res): result(res) { }
     ~PG_result();
     void display_exec_result();
-    PGresult* get_result(int i) { return results[i]; }
+    PGresult* get_result() { return result; }
 };
 
 using shared_PG_result = std::shared_ptr<PG_result>;
@@ -101,7 +101,7 @@ private:
 public:
     DB_module(std::shared_ptr<Parser> parser_);
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
-    ~DB_module();
+    ~DB_module() { };
     future_result exec_command(const char*) const;
 
     //For standalone module only:

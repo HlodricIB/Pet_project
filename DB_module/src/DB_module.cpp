@@ -15,12 +15,6 @@ DB_module::DB_module(const char* conninfo)
 
 };
 
-DB_module::~DB_module()
-{
-    this->exec_command("TRUNCATE song_table RESTART IDENTITY");
-    this->exec_command("DELETE FROM log_table; ALTER SEQUENCE log_table_id_seq RESTART WITH 1");
-}
-
 future_result DB_module::exec_command(const char* command) const
 {
     /*PGconn* conn;
@@ -78,10 +72,8 @@ future_result DB_module::exec_command(const char* command) const
                     std::this_thread::yield();
                 }
             }
-            std::vector<PGresult*> vec_res;
-            vec_res.push_back(PQexec(conn, command));
+            shared_PG_result res = std::make_shared<PG_result>(PQexec(conn, command));
             conns->push_connection(conn);   // Return connection to pool of connections
-            shared_PG_result res = std::make_shared<PG_result>(vec_res);
             PG_result_promise.set_value(res);
         };
         threads->push_task(std::move(lambda));
@@ -143,8 +135,19 @@ void thread_pool::worker_thread()
         if (done)
             break;
         pull_task(task);
+        lk.unlock();
         task();
     }
+}
+
+void thread_pool::push_task(function_wrapper&& task)
+{
+    {
+        std::lock_guard<std::mutex> lk (mut);
+        task_deque.push_back(std::move(task));
+    }                       // Scope here to
+    data_cond.notify_one(); // notify the condition variable after unlocking the mutex — this is so that, if the waiting thread wakes
+                            // immediately, it doesn’t then have to block again, waiting for you to unlock the mutex.
 }
 
 //*******************************************connection_pool*******************************************
@@ -233,38 +236,28 @@ bool connection_pool::pull_connection(PGconn*& conn)
 
 void PG_result::display_exec_result()
 {
-    for (auto& res : results)
+    ExecStatusType res_status = PQresultStatus(result);
+    if (res_status == PGRES_TUPLES_OK && PQnfields(result) != 0)
     {
-        ExecStatusType res_status = PQresultStatus(res);
-        if (res_status != PGRES_TUPLES_OK && res_status != PGRES_COMMAND_OK)
+        int nFields = PQnfields(result);
+        for (int i = 0; i != nFields; ++i)
+            std::cout << PQfname(result, i) << '\t';
+        std::cout << std::endl;
+        int l = PQntuples(result);
+        for (int i = 0; i < l; i++)
         {
-            std::cerr << "Command failed: " << PQresultErrorMessage(res) << std::endl;
-        }
-        if (res_status == PGRES_TUPLES_OK)
-        {
-            int nFields = PQnfields(res);
-            for (int i = 0; i != nFields; ++i)
-                std::cout << PQfname(res, i) << '\t';
-            std::cout << std::endl;
-            int l = PQntuples(res);
-            for (int i = 0; i < l; i++)
             {
-                {
-                    for (int j = 0; j < nFields; j++)
-                        std::cout << PQgetvalue(res, i, j) << "\t";
-                }
-            std::cout << std::endl;
+                for (int j = 0; j < nFields; j++)
+                    std::cout << PQgetvalue(result, i, j) << "\t";
             }
+        std::cout << std::endl;
         }
     }
 }
 
 PG_result::~PG_result()
 {
-    for(auto& res : results)
-    {
-        PQclear(res);
-    }
+    PQclear(result);
 }
 
 

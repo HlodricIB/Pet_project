@@ -17,7 +17,7 @@ int main()
     auto res3 = db.exec_command("BEGIN; SELECT FOR SHARE; SELECT * FROM song_table; COMMIT");
     auto res4 = db.exec_command("BEGIN; SELECT FOR SHARE; SELECT * FROM log_table; COMMIT");*/
     std::vector<std::string> async_query;
-    std::string s = "BEGIN; SELECT FOR SHARE; SELECT * FROM song_table; COMMIT";
+    std::string s = "SELECT FOR SHARE; SELECT * FROM song_table";
     for (int i = 0; i != 300; ++i)
     {
         async_query.push_back(s);
@@ -35,6 +35,8 @@ int main()
         future_result async_res_m[async_query.size() + 2];
         DB_module db{ };
         async = async_handle(db, async_query, async_res_m);
+        db.exec_command("TRUNCATE song_table RESTART IDENTITY");
+        db.exec_command("DELETE FROM log_table; ALTER SEQUENCE log_table_id_seq RESTART WITH 1");
         auto start = std::chrono::high_resolution_clock::now();
         shared_PG_result res;
         for (auto& i : async_res_m)
@@ -85,9 +87,9 @@ double async_handle(const DB_module& db, std::vector<std::string>& query, future
         auto res = db.exec_command(query[i].c_str());
         async_res[i] = std::move(res);
     }
-    auto res7 = db.exec_command("BEGIN; SELECT FOR SHARE; SELECT * FROM song_table; COMMIT");
+    auto res7 = db.exec_command("SELECT FOR SHARE; SELECT * FROM song_table");
     async_res[i] = (std::move(res7));
-    auto res8 = db.exec_command("BEGIN; SELECT FOR SHARE; SELECT * FROM log_table; COMMIT");
+    auto res8 = db.exec_command("SELECT FOR SHARE; SELECT * FROM log_table");
     ++i;
     async_res[i] = (std::move(res8));
     auto stop = std::chrono::high_resolution_clock::now();
