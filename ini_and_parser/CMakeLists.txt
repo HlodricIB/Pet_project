@@ -11,6 +11,7 @@ if(Boost_FOUND)
     add_executable(${PROJECT_NAME}
       ./src/main.cpp
       ./src/parser.cpp
+      ./include/parser.h
   )
 endif()
 

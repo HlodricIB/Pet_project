@@ -17,19 +17,23 @@
 class connection_pool
 {
 private:
-    std::deque<PGconn*> conns_deque;    // Deque is because we need pop operations
     mutable std::mutex mut;
-public:    
-    connection_pool() { }
+    std::deque<PGconn*> conns_deque;    //Deque is because we need pop operations
+    int conns_established{0};
+    void make_connections(size_t conn_count, std::function<void(PGconn*&)>);
+public:
     explicit connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
-    connection_pool(connection_pool&& other): conns_deque(std::move(other.conns_deque)) { }
+    explicit connection_pool(size_t, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
+    connection_pool(const connection_pool&) = delete;
+    connection_pool& operator=(const connection_pool&) = delete;
+    connection_pool(connection_pool&) = delete;
+    connection_pool& operator=(connection_pool&) = delete;
+    connection_pool(connection_pool&&) = delete;
+    connection_pool& operator=(connection_pool&&) = delete;
     ~connection_pool();
     bool pull_connection(PGconn*&);
     void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_back(conn); }
-
-    //For standalone module only:
-    explicit connection_pool(size_t, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
-
+    int conns_amount() const { return conns_established; }
 };
 
 class function_wrapper
@@ -66,21 +70,29 @@ private:
     std::atomic_bool done{false};
     std::vector<std::thread> threads;
     std::deque<function_wrapper> task_deque;
+    int threads_started{0};
     void pull_task(function_wrapper&);  //Reference here is because task already created in void worker_thread() function, that defined below
     void starting_threads(size_t);
 public:
     thread_pool();
     thread_pool(size_t);    // If you want to create thread_pool with specified connections amount
+    thread_pool(const thread_pool&) = delete;
+    thread_pool& operator=(const thread_pool&) = delete;
+    thread_pool(thread_pool&) = delete;
+    thread_pool& operator=(thread_pool&) = delete;
+    thread_pool(thread_pool&&) = delete;
+    thread_pool& operator=(thread_pool&&) = delete;
     ~thread_pool();
     void worker_thread();
     bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
     void push_task(function_wrapper&&);
+    int threads_amount() const { return threads_started; }
 };
 
 class PG_result
 {
 private:
-    PGresult* result; //Container is because one query may return several results
+    PGresult* result;
 public:
     PG_result() { }
     PG_result(PGresult* res): result(res) { }
@@ -95,17 +107,18 @@ using future_result = std::future<shared_PG_result>;
 class DB_module
 {
 private:
-    std::shared_ptr<connection_pool> conns; //Shared_ptr to pool of established connections
-    std::shared_ptr<thread_pool> threads;   //Shared_ptr to pool of threads
+    std::condition_variable conn_cond;
+    std::shared_ptr<connection_pool> conns{0}; //Shared_ptr to pool of established connections
+    std::shared_ptr<thread_pool> threads{0};   //Shared_ptr to pool of threads
     shared_PG_result async_command_execution(const char*) const;
+    size_t conns_threads_count() const;
 public:
     DB_module(std::shared_ptr<Parser> parser_);
+    DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };
     future_result exec_command(const char*) const;
-
-    //For standalone module only:
-    DB_module(const char* conninfo = "dbname = pet_project_db");
+    std::pair<int, int> conns_threads_amount() const;
 };
 
 

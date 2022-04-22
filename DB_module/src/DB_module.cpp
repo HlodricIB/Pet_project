@@ -3,81 +3,53 @@
 #include "DB_module.h"
 
 //*******************************************DB_module*******************************************
-
-//DB_module::DB_module(std::shared_ptr<Parser> p_DB)
-DB_module::DB_module(const char* conninfo)
+size_t DB_module::conns_threads_count() const
 {
     auto thread_count = std::thread::hardware_concurrency();
-    auto conn_threads_count = thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn*
-    //conns = std::make_shared<connection_pool>(conn_count, p_DB);
+    return thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn* and threads
+}
+
+DB_module::DB_module(std::shared_ptr<Parser> p_DB)
+{
+    auto conn_threads_count = conns_threads_count();
+    conns = std::make_shared<connection_pool>(conn_threads_count, p_DB);
+    threads = std::make_shared<thread_pool>(conn_threads_count);
+}
+
+DB_module::DB_module(const char* conninfo)
+{
+    auto conn_threads_count = conns_threads_count();
     conns = std::make_shared<connection_pool>(conn_threads_count, conninfo);
     threads = std::make_shared<thread_pool>(conn_threads_count);
-
-};
+}
 
 future_result DB_module::exec_command(const char* command) const
 {
-    /*PGconn* conn;
-    //while (!conns->pull_connection(conn));
-    while (true)
-    {
-        if (conns->pull_connection(conn))
-        {
-            break;
-        } else
-        {
-            std::this_thread::yield();
-        }
-    }
     std::promise<shared_PG_result> PG_result_promise;
     future_result res = PG_result_promise.get_future();
-    auto send_success = PQsendQuery(conn, command);
-    if (send_success != 1)  // If sending command to Postgre server was not succesfull
-    {
-        //std::cerr << "Command failed" <<std::endl;
-        PG_result_promise.set_value(nullptr);   //To return an exception object of type std::future_error with an error condition std::future_errc::broken_promise into res
-    } else {
-        auto lambda = [this, PG_result_promise = std::move(PG_result_promise), conn] () mutable {
-            std::vector<PGresult*> vec_res;
-            PGresult* single_res{0};
-            while ((single_res = PQgetResult(conn)))
+    auto lambda = [this, PG_result_promise = std::move(PG_result_promise), command] () mutable {
+        PGconn* conn;
+        while (true)
+        {
+            if (conns->pull_connection(conn))
             {
-                if (PQnfields(single_res) == 0)
-                {
-                    PQclear(single_res);
-                } else
-                {
-                    vec_res.push_back(single_res);
-                }
+                break;
+            } else
+            {
+                std::this_thread::yield();
             }
-            conns->push_connection(conn);   // Return connection to pool of connections
-            shared_PG_result res = std::make_shared<PG_result>(vec_res);
-            PG_result_promise.set_value(res);
-        };
-        threads->push_task(std::move(lambda));
-    }
-    return res; // Returning the future, that contains results from the promise*/
-
-    std::promise<shared_PG_result> PG_result_promise;
-    future_result res = PG_result_promise.get_future();
-        auto lambda = [this, PG_result_promise = std::move(PG_result_promise), command] () mutable {
-            PGconn* conn;
-            while (true)
-            {
-                if (conns->pull_connection(conn))
-                {
-                    break;
-                } else
-                {
-                    std::this_thread::yield();
-                }
             }
             shared_PG_result res = std::make_shared<PG_result>(PQexec(conn, command));
             conns->push_connection(conn);   // Return connection to pool of connections
             PG_result_promise.set_value(res);
         };
-        threads->push_task(std::move(lambda));
+    threads->push_task(std::move(lambda));
     return res; // Returning the future, that contains results from the promise
+}
+
+std::pair<int, int> DB_module::conns_threads_amount() const
+{
+    return std::make_pair<int, int>(conns->conns_amount(), threads->threads_amount());
 }
 
 //*******************************************thread_pool*******************************************
@@ -101,9 +73,10 @@ void thread_pool::starting_threads(size_t threads_count)
         try {
             threads.push_back(std::thread(&thread_pool::worker_thread, this));
         }  catch (...) {
-            std::cerr << "Creating pool of threads failed\n";
+            continue;
         }
     }
+    threads_started = threads.size();
 }
 
 thread_pool::~thread_pool()
@@ -152,8 +125,19 @@ void thread_pool::push_task(function_wrapper&& task)
 
 //*******************************************connection_pool*******************************************
 
-//connection_pool::connection_pool(std::shared_ptr<Parser> parser)
+connection_pool::connection_pool(size_t conn_count, std::shared_ptr<Parser> p_DB)
+{
+    std::function<void(PGconn*&)> connect = [p_DB] (PGconn*& conn) { conn = PQconnectStartParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
+    make_connections(conn_count, connect);
+}
+
 connection_pool::connection_pool(size_t conn_count, const char* conninfo)
+{
+    std::function<void(PGconn*&)> connect = [conninfo] (PGconn*& conn) { conn = PQconnectStart(conninfo); };
+    make_connections(conn_count, connect);
+}
+
+void connection_pool::make_connections(size_t conn_count, std::function<void(PGconn*&)> connect)
 {
     int attempts_overall = 20;  //Overall attempts to get needed amount of PGconn*
     std::deque<std::pair<std::future<bool>, PGconn*>> temp_conn;   // Temporary deque to store PGconn* that are not real connections at that time
@@ -161,8 +145,7 @@ connection_pool::connection_pool(size_t conn_count, const char* conninfo)
     for (size_t i = 0; i != conn_count; ++i)
     {
         --attempts_overall;
-        //PGconn* conn = PQconnectStartParams(p_DB.parsed_info_ptr('k'), p_DB.parsed_info_ptr('v'), 0);
-        conn = PQconnectStart(conninfo);    // First of all getting pointers to PGconn which are not real connections at that time
+        connect(std::ref(conn));    // First of all getting pointers to PGconn which are not real connections at that time
         if (conn)
         {
             PQsetnonblocking(conn, 1);  //Setting conn connection to nonblocking connection;
@@ -207,6 +190,7 @@ connection_pool::connection_pool(size_t conn_count, const char* conninfo)
             PQfinish(t_conn.second);
         }
     }
+    conns_established = conns_deque.size();
 }
 
 connection_pool::~connection_pool()

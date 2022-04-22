@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(${PROJECT_NAME}
     ./src/main.cpp
     ./src/DB_module.cpp
+    ./include/DB_module.h
 )
 
 find_package(PostgreSQL REQUIRED)
