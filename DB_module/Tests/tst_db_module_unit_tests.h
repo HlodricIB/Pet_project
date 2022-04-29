@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock-matchers.h>
+#include <gmock/gmock.h>
 #include "DB_module.h"
 
 using namespace testing;
@@ -10,7 +11,6 @@ using namespace testing;
 class connection_pool_testing : public testing::Test{
 protected:
     connection_pool c_p_dft_conninfo{4};
-    bool b{false};
     PGconn* conn{0};
     void pull_conns(int amount)
     {
@@ -23,6 +23,17 @@ protected:
     }
 };
 
+class MockParser : public Parser
+{
+public:
+    MockParser();
+    MOCK_METHOD(const char* const*, parsed_info_ptr, (char m), (const, override));
+};
 
+class MockParserHelper
+{
+public:
+    const char* const* constructing_massives(char m);
+};
 
 #endif // TST_DB_MODULE_UNIT_TESTS_H

@@ -39,7 +39,6 @@ include_directories(${GTestIncludes} ../include /home/nikita/C++/Pet_project/ini
 
 add_executable(DB_module_unit_tests main.cpp tst_db_module_unit_tests.cpp tst_db_module_unit_tests.h
                ${GTestFiles})
-#find_path(${LIBPQ} libpq-fe.h ${PostgreSQL_INCLUDE_DIRS})
 add_test(NAME DB_module_unit_tests COMMAND DB_module_unit_tests)
 add_library(DB_module STATIC ../src/DB_module.cpp ../include/DB_module.h)
 target_link_libraries(DB_module PRIVATE PostgreSQL::PostgreSQL)
