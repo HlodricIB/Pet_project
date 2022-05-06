@@ -32,8 +32,12 @@ public:
 
 class MockParserHelper
 {
+private:
+    const char* k[8] {"host", "hostaddr", "port", "dbname", "password", "connect_timeout", "client_encoding", "sslmode"};
+    const char* v[8] {"localhost", "127.0.0.1", "5432", "pet_project_db", "pet_project_password", "", "auto", "prefer"};
 public:
-    const char* const* constructing_massives(char m);
+    constexpr MockParserHelper() = default;
+    const char* const* returning_massives(char m) const;
 };
 
 #endif // TST_DB_MODULE_UNIT_TESTS_H
