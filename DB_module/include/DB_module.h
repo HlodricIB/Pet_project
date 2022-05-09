@@ -20,10 +20,11 @@ private:
     mutable std::mutex mut;
     std::deque<PGconn*> conns_deque;    //Deque is because we need pop operations
     int conns_established{0};
-    void make_connections(size_t conn_count, std::function<void(PGconn*&)>);
+    //void make_connections(size_t conn_count, std::function<void(PGconn*&)>);
+    void make_connections(size_t conn_count, std::function<PGconn*()>);
 public:
-    explicit connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
-    explicit connection_pool(size_t, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
+    connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
+    explicit connection_pool(size_t = 1, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
     connection_pool(const connection_pool&) = delete;
     connection_pool& operator=(const connection_pool&) = delete;
     connection_pool(connection_pool&) = delete;

@@ -28,7 +28,7 @@ int main()
     {
         one_threaded_query.push_back(s);
     }
-    double async, one_threaded, getting;
+    double async, one_threaded, getting_showing_async, showing_one_threaded;
     fill_table("dbname = pet_project_db");
     {
         //std::vector<future_result> async_res;
@@ -47,18 +47,21 @@ int main()
                 //i.get();
         }
         auto stop = std::chrono::high_resolution_clock::now();
-        getting = std::chrono::duration<double, std::micro>(stop - start).count();
+        getting_showing_async = std::chrono::duration<double, std::micro>(stop - start).count();
     }
     {
         fill_table("dbname = pet_project_db");
         //std::vector<PGresult*> one_threaded_res(1000);
         PGresult* one_threaded_res_m[one_threaded_query.size() + 2];
         one_threaded = one_threaded_handle(one_threaded_query, one_threaded_res_m);
+        auto start = std::chrono::high_resolution_clock::now();
         for (auto& i : one_threaded_res_m)
         {
             display_exec_result_sync(i);
             PQclear(i);
         }
+        auto stop = std::chrono::high_resolution_clock::now();
+        showing_one_threaded = std::chrono::duration<double, std::micro>(stop - start).count();
     }
     PGconn* conn = PQconnectdb("dbname = pet_project_db");
     auto res1 = PQexec(conn, "TRUNCATE song_table RESTART IDENTITY");
@@ -66,8 +69,11 @@ int main()
     PQclear(res1);
     PQclear(res2);
     PQfinish(conn);
-    std::cout << async << "\n" << one_threaded << std::endl;
-    std::cout << getting << std::endl;
+    std::cout << "Async: " << async << "\n" << "One threaded:" << one_threaded << std::endl;
+    std::cout << "Getting, showing async: " << getting_showing_async << "\n" << "Showing one threaded: "
+                << showing_one_threaded << std::endl;
+    std::cout << "Sum async: " << async + getting_showing_async << "\n" << "Sum one threaded:"
+                << one_threaded + showing_one_threaded << std::endl;
     /*int m_i[1000000];
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i != 1000000; ++i)

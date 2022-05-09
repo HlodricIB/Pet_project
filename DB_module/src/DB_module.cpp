@@ -127,19 +127,21 @@ void thread_pool::push_task(function_wrapper&& task)
 
 connection_pool::connection_pool(size_t conn_count, std::shared_ptr<Parser> p_DB)
 {
-    std::function<void(PGconn*&)> connect = [p_DB] (PGconn*& conn) { conn = PQconnectStartParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
+    //auto connect = [p_DB] (PGconn*& conn) { conn = PQconnectStartParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
+    auto connect = [p_DB] ()->PGconn* { return PQconnectdbParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
     make_connections(conn_count, connect);
 }
 
 connection_pool::connection_pool(size_t conn_count, const char* conninfo)
 {
-    std::function<void(PGconn*&)> connect = [conninfo] (PGconn*& conn) { conn = PQconnectStart(conninfo); };
+    //auto connect = [conninfo] (PGconn*& conn) { conn = PQconnectStart(conninfo); };
+    auto connect = [conninfo] ()->PGconn* { return PQconnectdb(conninfo); };
     make_connections(conn_count, connect);
 }
 
-void connection_pool::make_connections(size_t conn_count, std::function<void(PGconn*&)> connect)
+void connection_pool::make_connections(size_t conn_count, std::function<PGconn*()> connect)
 {
-    int attempts_overall = 20;  //Overall attempts to get needed amount of PGconn*
+    /*int attempts_overall = 20;  //Overall attempts to get needed amount of PGconn*
     std::deque<std::pair<std::future<bool>, PGconn*>> temp_conn;   // Temporary deque to store PGconn* that are not real connections at that time
     PGconn* conn;
     for (size_t i = 0; i != conn_count; ++i)
@@ -167,11 +169,14 @@ void connection_pool::make_connections(size_t conn_count, std::function<void(PGc
             std::future<bool> is_established = std::async([conn] ()->bool {
                 namespace c = std::chrono;
                 auto const timeout = c::steady_clock::now() + c::minutes(1); // Establishing waiting connection time to avoid endless loop in while below
-                enum { PGRES_POLLING_OK = 3};   // To make comparison with returnig value_type of PQconnectPoll
                 while (timeout > c::steady_clock::now())
                 {
-                    if (PQconnectPoll(conn) == 3)
+                    //std::cout << PQstatus(conn) << std::endl;
+                    //std::cout << PQconnectPoll(conn) << std::endl;
+
+                    if (PQconnectPoll(conn) == PGRES_POLLING_OK)
                     {
+                        //std::cout << PQconnectPoll(conn) << std::endl;
                         return true;
                     }
                 }
@@ -188,6 +193,35 @@ void connection_pool::make_connections(size_t conn_count, std::function<void(PGc
         } else
         {
             PQfinish(t_conn.second);
+        }
+    }*/
+    std::vector<std::future<PGconn*>> futures_conns(conn_count);    //Temporary container to storage futures with PGconn*
+    for (size_t i = 0; i != conn_count; ++i)
+    {
+        std::future<PGconn*> conn = std::async([connect] ()->PGconn* {
+            int attempts_overall = 5;  //Overall attempts to set connection;
+            //PGconn* conn{nullptr};
+            for (int i = 0; i != attempts_overall; ++i)
+            {
+                PGconn* conn = connect();
+                if (PQstatus(conn) == CONNECTION_OK)
+                {
+                    PQsetnonblocking(conn, 1);  //Setting conn connection to nonblocking connection;
+                    return conn;
+                }
+                PQfinish(conn);
+                //PGconn* conn{nullptr}; //Starting new attempt to establish connection
+            }
+            return nullptr;
+        });
+        futures_conns[i] = std::move(conn);
+    }
+    for (auto& t_conn : futures_conns)
+    {
+        PGconn* conn = t_conn.get();
+        if (conn)   // If connection was established (not nullptr), than it have to be copied to conns_deque
+        {
+            conns_deque.push_back(conn);
         }
     }
     conns_established = conns_deque.size();
