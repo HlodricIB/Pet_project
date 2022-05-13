@@ -33,7 +33,7 @@ public:
     connection_pool& operator=(connection_pool&&) = delete;
     ~connection_pool();
     bool pull_connection(PGconn*&);
-    void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_back(conn); }
+    void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_front(conn); }   //Push_front because sequential queries on same connection is faster than on different
     int conns_amount() const { return conns_established; }
 };
 
@@ -56,7 +56,7 @@ public:
     function_wrapper(F&& f): impl(new impl_type<F>(std::move(f))) { }
     void operator()() { impl->call(); }
     function_wrapper() = default;
-    function_wrapper(function_wrapper&& other): impl(std::move(other.impl)) {  }
+    function_wrapper(function_wrapper&& other): impl(std::move(other.impl)) { }
     function_wrapper& operator=(function_wrapper&& other) { impl = std::move(other.impl); return *this; }
     function_wrapper(const function_wrapper&) = delete;
     function_wrapper(function_wrapper&) = delete;
@@ -74,9 +74,10 @@ private:
     int threads_started{0};
     void pull_task(function_wrapper&);  //Reference here is because task already created in void worker_thread() function, that defined below
     void starting_threads(size_t);
+    void worker_thread();
 public:
     thread_pool();
-    thread_pool(size_t);    // If you want to create thread_pool with specified connections amount
+    explicit thread_pool(size_t);    // If you want to create thread_pool with specified threads amount
     thread_pool(const thread_pool&) = delete;
     thread_pool& operator=(const thread_pool&) = delete;
     thread_pool(thread_pool&) = delete;
@@ -84,7 +85,6 @@ public:
     thread_pool(thread_pool&&) = delete;
     thread_pool& operator=(thread_pool&&) = delete;
     ~thread_pool();
-    void worker_thread();
     bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
     void push_task(function_wrapper&&);
     int threads_amount() const { return threads_started; }
@@ -95,8 +95,9 @@ class PG_result
 private:
     PGresult* result;
 public:
-    PG_result() { }
+    PG_result(): result{nullptr} { }
     PG_result(PGresult* res): result(res) { }
+    PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
     PGresult* get_result() { return result; }
