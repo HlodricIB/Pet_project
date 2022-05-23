@@ -20,11 +20,10 @@ private:
     mutable std::mutex mut;
     std::deque<PGconn*> conns_deque;    //Deque is because we need pop operations
     int conns_established{0};
-    //void make_connections(size_t conn_count, std::function<void(PGconn*&)>);
-    void make_connections(size_t conn_count, std::function<PGconn*()>);
+    void make_connections(size_t conn_count, std::function<PGconn*()>, bool);   //Third argument is telling wether "warming up" connections, filling cache for DB, or not
 public:
-    connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
-    explicit connection_pool(size_t = 1, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
+    connection_pool(size_t, std::shared_ptr<Parser> parser, bool = false);   //First argument is for setting number of connections to open, third argument is telling wether "warming up" connections, filling cache for DB, or not
+    explicit connection_pool(size_t = 1, bool = false, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open, second argument is telling wether "warming up" connections, filling cache for DB, or not
     connection_pool(const connection_pool&) = delete;
     connection_pool& operator=(const connection_pool&) = delete;
     connection_pool(connection_pool&) = delete;
@@ -76,7 +75,7 @@ private:
     void starting_threads(size_t);
     void worker_thread();
 public:
-    thread_pool();
+    thread_pool();  //Creates thread_pool with threads amount depending on std::thread::hardware_concurrency()
     explicit thread_pool(size_t);    // If you want to create thread_pool with specified threads amount
     thread_pool(const thread_pool&) = delete;
     thread_pool& operator=(const thread_pool&) = delete;
@@ -85,7 +84,6 @@ public:
     thread_pool(thread_pool&&) = delete;
     thread_pool& operator=(thread_pool&&) = delete;
     ~thread_pool();
-    bool empty() { std::lock_guard<std::mutex> lk (mut); return task_deque.empty(); }
     void push_task(function_wrapper&&);
     int threads_amount() const { return threads_started; }
 };
@@ -93,10 +91,11 @@ public:
 class PG_result
 {
 private:
-    PGresult* result;
+    PGresult* result{nullptr};
 public:
-    PG_result(): result{nullptr} { }
-    PG_result(PGresult* res): result(res) { }
+    PG_result() { }
+    explicit PG_result(PGresult* res): result(res) { }
+    PG_result(PG_result&&);
     PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
@@ -115,8 +114,8 @@ private:
     shared_PG_result async_command_execution(const char*) const;
     size_t conns_threads_count() const;
 public:
-    DB_module(std::shared_ptr<Parser> parser_);
-    DB_module(const char* conninfo = "dbname = pet_project_db");
+    explicit DB_module(std::shared_ptr<Parser> parser_);
+    explicit DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };
     future_result exec_command(const char*) const;

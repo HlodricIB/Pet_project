@@ -20,16 +20,18 @@ int main()
     std::vector<std::string> async_query;
     //std::string s = "SELECT FOR SHARE; SELECT * FROM song_table";
     std::string s = "SELECT * FROM song_table";
-    for (int i = 0; i != 900; ++i)
+    for (int i = 0; i != 3; ++i)
     {
         async_query.push_back(s);
     }
+    async_query.push_back("SELECT * FROM log_table");
     std::vector<std::string> one_threaded_query;
     s = "SELECT * FROM song_table";
-    for (int i = 0; i != 900; ++i)
+    for (int i = 0; i != 3; ++i)
     {
         one_threaded_query.push_back(s);
     }
+    one_threaded_query.push_back("SELECT * FROM log_table");
     double async, one_threaded, showing_async, showing_one_threaded;
     {
         std::cout << "One_threaded" << std::endl;
@@ -100,6 +102,7 @@ void async_handle(const DB_module& db, std::vector<std::string>& query, future_r
     {
         auto res = db.exec_command(query[i].c_str());
         async_res[i] = std::move(res);
+        //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 

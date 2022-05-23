@@ -12,18 +12,18 @@ size_t DB_module::conns_threads_count() const
 DB_module::DB_module(std::shared_ptr<Parser> p_DB)
 {
     auto conn_threads_count = conns_threads_count();
-    conns = std::make_shared<connection_pool>(conn_threads_count, p_DB);
+    conns = std::make_shared<connection_pool>(conn_threads_count, p_DB, true);
     threads = std::make_shared<thread_pool>(conn_threads_count);
 }
 
 DB_module::DB_module(const char* conninfo)
 {
     auto conn_threads_count = conns_threads_count();
-    conns = std::make_shared<connection_pool>(conn_threads_count, conninfo);
+    conns = std::make_shared<connection_pool>(conn_threads_count, true, conninfo);
     threads = std::make_shared<thread_pool>(conn_threads_count);
 }
 
-std::mutex iom;
+//std::mutex iom;
 
 future_result DB_module::exec_command(const char* command) const
 {
@@ -41,13 +41,13 @@ future_result DB_module::exec_command(const char* command) const
                 std::this_thread::yield();
             }
         }
-        auto start3 = std::chrono::high_resolution_clock::now();
+        //auto start3 = std::chrono::high_resolution_clock::now();
         shared_PG_result res = std::make_shared<PG_result>(PQexec(conn, command));
-        auto stop3 = std::chrono::high_resolution_clock::now();
+        /*auto stop3 = std::chrono::high_resolution_clock::now();
         std::unique_lock<std::mutex> lk(iom);
         std::cout << "From lambda: " << std::chrono::duration<double, std::micro>(stop3 - start3).count() << std::endl;
-        std::cout << (void*)conn << std::endl;
-        iom.unlock();
+        std::cout << "Connection: " << (void*)conn << "; Thread_id: " << std::this_thread::get_id() << std::endl;
+        iom.unlock();*/
 
         PG_result_promise.set_value(res);
         conns->push_connection(conn);   // Return connection to pool of connections
@@ -134,19 +134,19 @@ void thread_pool::push_task(function_wrapper&& task)
 
 //*******************************************connection_pool*******************************************
 
-connection_pool::connection_pool(size_t conn_count, std::shared_ptr<Parser> p_DB)
+connection_pool::connection_pool(size_t conn_count, std::shared_ptr<Parser> p_DB, bool warm)
 {
     auto connect = [p_DB] ()->PGconn* { return PQconnectdbParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
-    make_connections(conn_count, connect);
+    make_connections(conn_count, connect, warm);
 }
 
-connection_pool::connection_pool(size_t conn_count, const char* conninfo)
+connection_pool::connection_pool(size_t conn_count, bool warm, const char* conninfo)
 {
     auto connect = [conninfo] ()->PGconn* { return PQconnectdb(conninfo); };
-    make_connections(conn_count, connect);
+    make_connections(conn_count, connect, warm);
 }
 
-void connection_pool::make_connections(size_t conn_count, std::function<PGconn*()> connect)
+void connection_pool::make_connections(size_t conn_count, std::function<PGconn*()> connect, bool warm)
 {
     std::vector<std::future<PGconn*>> futures_conns(conn_count);    //Temporary container to storage futures with PGconn*
     for (size_t i = 0; i != conn_count; ++i)
@@ -173,6 +173,21 @@ void connection_pool::make_connections(size_t conn_count, std::function<PGconn*(
         if (conn)   // If connection was established (not nullptr), than it have to be copied to conns_deque
         {
             conns_deque.push_back(conn);
+            if (warm)
+            {
+                //auto start3 = std::chrono::high_resolution_clock::now();
+                PGresult* warm_song = PQexec(conn, "SELECT * FROM song_table");
+                /*auto stop3 = std::chrono::high_resolution_clock::now();
+                std::cout << "From lambda: " << std::chrono::duration<double, std::micro>(stop3 - start3).count() << std::endl;
+                std::cout << PQresStatus(PQresultStatus(warm_song)) << std::endl;*/
+                PQclear(warm_song);
+                //auto start4 = std::chrono::high_resolution_clock::now();
+                PGresult* warm_log = PQexec(conn, "SELECT * FROM log_table");
+                /*auto stop4 = std::chrono::high_resolution_clock::now();
+                std::cout << "From lambda: " << std::chrono::duration<double, std::micro>(stop4 - start4).count() << std::endl;
+                std::cout << PQresStatus(PQresultStatus(warm_log)) << std::endl;*/
+                PQclear(warm_log);
+            }
         }
     }
     conns_established = conns_deque.size();
@@ -218,6 +233,10 @@ bool connection_pool::pull_connection(PGconn*& conn)
 }
 
 //*******************************************PG_result*******************************************
+PG_result::~PG_result()
+{
+    PQclear(result);
+}
 
 void PG_result::display_exec_result()
 {
@@ -240,11 +259,6 @@ void PG_result::display_exec_result()
     }
 }
 
-PG_result::~PG_result()
-{
-    PQclear(result);
-}
-
 PG_result& PG_result::operator=(PG_result&& rhs)
 {
     if (this != &rhs)
@@ -253,6 +267,12 @@ PG_result& PG_result::operator=(PG_result&& rhs)
         rhs.result = nullptr;
     }
     return *this;
+}
+
+PG_result::PG_result(PG_result&& other)
+{
+    result = other.result;
+    other.result = nullptr;
 }
 
 
