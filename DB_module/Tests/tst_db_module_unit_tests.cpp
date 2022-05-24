@@ -22,6 +22,21 @@ const char* const* MockParserHelper::returning_massives(char m) const
     }
 }
 
+const char* const* MockParserHelper::returning_massives_no_conns(char m) const
+{
+    switch (m)
+    {
+    case 'k':
+        return k_no_conns;
+        break;
+    case 'v':
+        return v_no_conns;
+    default:
+        return nullptr;
+        break;
+    }
+}
+
 //*******************************************connection_pool testing*******************************************
 
 connection_pool connection_pool_testing::c_p_dft_conninfo{4};
@@ -80,6 +95,24 @@ TEST_F(connection_pool_testing, Conninfo_ctor)
         EXPECT_EQ(2, c_p_conninfo.conns_amount());
         n_e(c_p_conninfo.conns_amount(), c_p_conninfo);
         pull_conns(c_p_conninfo.conns_amount(), c_p_conninfo);
+    }
+}
+
+TEST_F(connection_pool_testing, No_connections)
+{
+    MockParserHelper mock_parser_helper;
+    std::shared_ptr<Parser> mock_parser_shared_ptr = std::make_shared<MockParser>();
+    EXPECT_CALL(*(std::dynamic_pointer_cast<MockParser>(mock_parser_shared_ptr)), parsed_info_ptr(_))
+            .Times(10)
+            .WillRepeatedly(Invoke(&mock_parser_helper, &MockParserHelper::returning_massives_no_conns));
+    {
+        connection_pool c_p_no_conns(1, mock_parser_shared_ptr);
+        EXPECT_FALSE(static_cast<bool>(c_p_no_conns.conns_amount()));
+    }
+
+    {
+        connection_pool c_p_no_conns(1, false, "dbname = no_db");
+        EXPECT_FALSE(static_cast<bool>(c_p_no_conns.conns_amount()));
     }
 }
 

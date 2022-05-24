@@ -55,9 +55,12 @@ class MockParserHelper
 private:
     const char* k[9] {"host", "hostaddr", "port", "dbname", "password", "connect_timeout", "client_encoding", "sslmode", nullptr};
     const char* v[9] {"localhost", "127.0.0.1", "5432", "pet_project_db", "pet_project_password", "", "auto", "prefer", nullptr};
+    const char* k_no_conns[2] {"dbname", nullptr};
+    const char* v_no_conns[2] {"no_db", nullptr};
 public:
     constexpr MockParserHelper() = default;
     const char* const* returning_massives(char m) const;
+    const char* const* returning_massives_no_conns(char m) const;
 };
 
 class function_wrapper_testing : public testing::Test

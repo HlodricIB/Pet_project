@@ -22,8 +22,8 @@ private:
     int conns_established{0};
     void make_connections(size_t conn_count, std::function<PGconn*()>, bool);   //Third argument is telling wether "warming up" connections, filling cache for DB, or not
 public:
-    connection_pool(size_t, std::shared_ptr<Parser> parser, bool = false);   //First argument is for setting number of connections to open, third argument is telling wether "warming up" connections, filling cache for DB, or not
-    explicit connection_pool(size_t = 1, bool = false, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open, second argument is telling wether "warming up" connections, filling cache for DB, or not
+    connection_pool(size_t, std::shared_ptr<Parser> parser, bool = false);   //First argument is for setting number of connections to open, third argument is telling whether "warming up" connections, filling cache for DB, or not
+    explicit connection_pool(size_t = 1, bool = false, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open, second argument is telling whether "warming up" connections, filling cache for DB, or not
     connection_pool(const connection_pool&) = delete;
     connection_pool& operator=(const connection_pool&) = delete;
     connection_pool(connection_pool&) = delete;
