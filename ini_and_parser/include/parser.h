@@ -60,9 +60,9 @@ private:
     void clearing_massives();
 public:
     Parser_DB() { };
-    Parser_DB(const char* config_filename);
+    Parser_DB(const char*);
     Parser_DB(const std::string config_filename): Parser_DB(config_filename.c_str()) { }
-    Parser_DB(const prop_tree::ptree& section_ptree_);
+    Parser_DB(const prop_tree::ptree&);
     Parser_DB(const Parser_DB&);
     Parser_DB& operator=(const Parser_DB&);
     ~Parser_DB() override;
