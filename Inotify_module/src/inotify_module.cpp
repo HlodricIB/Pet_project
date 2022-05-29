@@ -1,3 +1,5 @@
+#include <unistd.h>
+#include <iostream>
 #include "inotify_module.h"
 
 Inotify_module::Inotify_module(const char* folder)
@@ -24,6 +26,42 @@ Inotify_module::Inotify_module(const char* folder)
 
 void Inotify_module::start_watching()
 {
+    const size_t multiplier = 10;
+    const size_t avg_fname_size = 10;
+    const size_t event_size = sizeof(struct inotify_event);
+    constexpr size_t buf_size = multiplier * (event_size + avg_fname_size);
+    char buf[buf_size] __attribute__((aligned(__alignof__(struct inotify_event))));
+    ssize_t ret, i = 0;
+    size_t len_buf = buf_size;
+    char* pos = &buf[0];
+    struct inotify_event* event;
+    while (!done)
+    {
+        while (len_buf != 0 && (ret = read(fd, pos, len_buf)) != 0) //This loop is to read all events from fd
+        {
+            if (ret == -1)
+            {
+                if (errno == EINTR)
+                {
+                    continue;
+                } else
+                {
+                    break;
+                }
+            }
+            len_buf -= ret;
+            pos += ret;
+        }
+        while (i < ret)
+        {
+            event = reinterpret_cast<struct inotify_event*>(&buf[i]);
+            if (static_cast<bool>(event->len))
+            {
+                std::cout << event->name << std::endl;
+            }
+            i += event_size + event->len;
+        }
+    }
 
 }
 

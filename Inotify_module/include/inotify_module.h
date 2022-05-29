@@ -5,11 +5,13 @@
 #include <string>
 #include <string.h>
 #include <errno.h>
+#include <atomic>
 
 class Inotify_module
 {
 private:
     bool initialized{false};    //Flag that shows if inotify was initialized successfully
+    std::atomic_bool done{false};
     int error_number{0};    //Errno if initializing inotify was not successful
     int fd{-1}; //File descriptor corresponding to the initialized instance of inotify
     int wd{-1}; //Watch descriptor corresponding to the initialized instance of inotify
