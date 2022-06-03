@@ -28,8 +28,6 @@ public:
     connection_pool& operator=(const connection_pool&) = delete;
     connection_pool(connection_pool&) = delete;
     connection_pool& operator=(connection_pool&) = delete;
-    connection_pool(connection_pool&&) = delete;
-    connection_pool& operator=(connection_pool&&) = delete;
     ~connection_pool();
     bool pull_connection(PGconn*&);
     void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_front(conn); }   //Push_front because sequential queries on same connection is faster than on different
@@ -81,8 +79,6 @@ public:
     thread_pool& operator=(const thread_pool&) = delete;
     thread_pool(thread_pool&) = delete;
     thread_pool& operator=(thread_pool&) = delete;
-    thread_pool(thread_pool&&) = delete;
-    thread_pool& operator=(thread_pool&&) = delete;
     ~thread_pool();
     void push_task(function_wrapper&&);
     int threads_amount() const { return threads_started; }
