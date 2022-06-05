@@ -9,28 +9,27 @@
 #include <thread>
 #include <filesystem>
 #include <memory>
+#include "logger.h"
 
 class Inotify_module
 {
 private:
     std::string songs_folder;
+    std::shared_ptr<Logger> logger{nullptr};
     bool if_success{false};    //Flag that shows if function works successfully
     int error_number{0};    //Errno if something is wrong
     std::atomic_bool done{false};
     int fd{-1}; //File descriptor corresponding to the initialized instance of inotify
     int wd{-1}; //Watch descriptor corresponding to the initialized instance of inotify
     std::thread watching_thread;
-    //std::shared_ptr<Logger> logger{nullptr};
     void create_inotify();
     void watching();
     void read_handle_event(const int);
     void refresh_song_list() const;
-
-
 public:
     Inotify_module() { };
-    explicit Inotify_module(const std::string folder);
-    explicit Inotify_module(const char*);
+    explicit Inotify_module(const std::string&); //Argument is a path to folder to watch for
+    explicit Inotify_module(const char* folder): Inotify_module(std::string(folder)) { };    //Argument is a path to folder to watch for
     //explicit Inotify_module(const parser_inotify)
     ~Inotify_module();
 

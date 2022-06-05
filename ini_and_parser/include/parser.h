@@ -33,8 +33,8 @@ private:
     void searching_backward ();
 public:
     Config_searching() { }
-    Config_searching(const char*);
-    Config_searching(const std::string config_to_find_);
+    explicit Config_searching(const char*);
+    explicit Config_searching(const std::string config_to_find_);
     std::string return_path() const { return path; }
 };
 
@@ -60,13 +60,33 @@ private:
     void clearing_massives();
 public:
     Parser_DB() { };
-    Parser_DB(const char*);
-    Parser_DB(const std::string config_filename): Parser_DB(config_filename.c_str()) { }
-    Parser_DB(const prop_tree::ptree&);
-    Parser_DB(const Parser_DB&);
+    explicit Parser_DB(const char*);
+    explicit Parser_DB(const std::string config_filename): Parser_DB(config_filename.c_str()) { }
+    explicit Parser_DB(const prop_tree::ptree&);
+    explicit Parser_DB(const Parser_DB&);
     Parser_DB& operator=(const Parser_DB&);
     ~Parser_DB() override;
     const char* const* parsed_info_ptr(char m = 'k') const override;
+    void display() const override;
+};
+
+class Parser_Inotify : public Parser
+{
+private:
+    size_t size_char_ptr_ptr;
+    char** paths{nullptr};
+    void constructing_massives(const prop_tree::ptree&);
+    void copying_massives(const Parser_Inotify&);
+    void clearing_massives();
+public:
+    Parser_Inotify() { };
+    explicit Parser_Inotify(const char*);
+    explicit Parser_Inotify(const std::string& config_filename): Parser_Inotify(config_filename.c_str()) { }
+    explicit Parser_Inotify(const prop_tree::ptree&);
+    explicit Parser_Inotify(const Parser_Inotify&);
+    Parser_Inotify& operator=(const Parser_Inotify&);
+    ~Parser_Inotify() override;
+    const char* const* parsed_info_ptr(char) const override { return paths; };
     void display() const override;
 };
 

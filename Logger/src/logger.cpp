@@ -12,13 +12,11 @@ Logger::Logger(const std::string& service_, const std::string& log_dir): service
     if (f_stream.is_open())
     {
         is_started = true;
-        make_record(service + " started");
     }
 }
 
 Logger::~Logger()
 {
-    make_record(service + " stopped");
     f_stream.close();
 }
 

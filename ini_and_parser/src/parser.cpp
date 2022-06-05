@@ -218,3 +218,87 @@ Parser_DB::~Parser_DB()
 {
     clearing_massives();
 }
+
+Parser_Inotify::Parser_Inotify(const prop_tree::ptree& config)
+{
+    constructing_massives(config);
+}
+
+Parser_Inotify::Parser_Inotify(const char* config_filename)
+{
+    prop_tree::ptree config;
+    try {
+        prop_tree::ini_parser::read_ini(config_filename, config);
+    }  catch (const prop_tree::ini_parser_error& error) {
+        std::cerr << error.what() << std::endl;
+    }
+    constructing_massives(config);
+}
+
+void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
+{
+    const prop_tree::ptree& section_ptree = config.get_child("Inotify_module");
+    int char_i = 0;
+    size_char_ptr_ptr = section_ptree.size();
+    paths = new char*[size_char_ptr_ptr + 1];
+    for (const auto& i : section_ptree)
+    {
+        paths[char_i] = new char[i.second.data().size()];
+        std::strcpy(paths[char_i], i.second.data().c_str());
+        ++char_i;
+    }
+}
+
+void Parser_Inotify::copying_massives(const Parser_Inotify& p)
+{
+    paths = new char*[size_char_ptr_ptr + 1];
+    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+    {
+        paths[i] = new char[strlen(p.paths[i]) + 1];
+        std::strcpy(paths[i], p.paths[i]);
+    }
+    paths[size_char_ptr_ptr] = nullptr;
+}
+
+void Parser_Inotify::clearing_massives()
+{
+    if (size_char_ptr_ptr !=0 )
+    {
+        for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+        {
+            delete [] paths[i];
+        }
+        delete [] paths;
+    }
+}
+
+Parser_Inotify::Parser_Inotify(const Parser_Inotify& p)
+{
+    size_char_ptr_ptr = p.size_char_ptr_ptr;
+    copying_massives(p);
+}
+
+Parser_Inotify& Parser_Inotify::operator=(const Parser_Inotify& rhs)
+{
+    if (this == &rhs)
+    {
+        return *this;
+    }
+    clearing_massives();
+    size_char_ptr_ptr = rhs.size_char_ptr_ptr;
+    copying_massives(rhs);
+    return *this;
+}
+
+void Parser_Inotify::display() const
+{
+    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+    {
+        std::cout << paths[i] << std::endl;
+    }
+}
+
+Parser_Inotify::~Parser_Inotify()
+{
+    clearing_massives();
+}

@@ -14,4 +14,11 @@ add_executable(${PROJECT_NAME}
 target_compile_options(${PROJECT_NAME} PUBLIC -g -O0 -Wall -Wextra)
 target_link_options(${PROJECT_NAME} PUBLIC -dynamic)
 
+set(Logger_SRC /home/nikita/C++/Pet_project/Logger/src)
+set(Logger_INC /home/nikita/C++/Pet_project/Logger/include)
+
 target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
+include_directories(${Logger_INC}/)
+
+add_library(Logger STATIC ${Logger_SRC}/logger.cpp ${Logger_INC}/logger.h)
+target_link_libraries(${PROJECT_NAME} PRIVATE Logger)
