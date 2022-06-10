@@ -110,7 +110,7 @@ private:
     shared_PG_result async_command_execution(const char*) const;
     size_t conns_threads_count() const;
 public:
-    explicit DB_module(std::shared_ptr<Parser> parser_);
+    explicit DB_module(std::shared_ptr<Parser>);
     explicit DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };

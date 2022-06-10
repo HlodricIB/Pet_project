@@ -6,7 +6,7 @@
 #include <vector>
 #include "logger.h"
 
-Logger::Logger(const std::string& service_, const std::string& log_dir): service(service_)
+Logger::Logger(const std::string& service_, const std::string& log_dir, std::uintmax_t size): service(service_), max_log_file_size(size)
 {
     open_file(log_dir);
     if (f_stream.is_open())
@@ -25,10 +25,56 @@ bool Logger::compare(std::filesystem::directory_entry const& first, std::filesys
     return first.last_write_time() < second.last_write_time();
 }
 
+bool Logger::create_dir_if_not_exist(const std::filesystem::path & log_folder_path)
+{
+    std::cout << "Specified directory for log files doesn't exist, create ";
+    char c;
+    std::error_code e_c;
+    while(true)
+    {
+        std::cout << "[y/n]?\n";
+        if (!(std::cin >> c))
+        {
+            std::cin.clear();
+            continue;
+        }
+        std::cin.get();
+        switch (c)
+        {
+        case 'y' :
+            if (!std::filesystem::create_directories(log_folder_path, e_c))
+            {
+                std::cerr << "Unable to create specified directory for log files: " << e_c.message() << std::endl;
+                return false;
+            }
+            return true;
+            break;
+        case 'n' :
+            return false;
+            break;
+        default:
+            if (std::cin.rdstate() == std::ios_base::badbit)
+            {
+                return false;
+            } else
+            {
+                continue;
+            }
+        }
+    }
+}
+
 void Logger::open_file(const std::string& log_dir)
 {
     namespace fs = std::filesystem;
     fs::path log_folder_path{log_dir};
+    if (!fs::exists(log_folder_path))
+    {
+        if (!create_dir_if_not_exist(log_folder_path))
+        {
+            return;
+        }
+    }
     auto begin = fs::directory_iterator(log_folder_path);
     auto end = fs::directory_iterator();
     if (begin != end)

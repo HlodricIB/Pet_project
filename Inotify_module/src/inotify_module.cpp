@@ -5,9 +5,23 @@
 #include <system_error>
 #include "inotify_module.h"
 
-Inotify_module::Inotify_module(const std::string& folder):songs_folder(folder)
+Inotify_module::Inotify_module(const std::string& songs_folder_, const std::string& logs_folder):songs_folder(songs_folder_)
 {
-    logger = std::make_shared<Logger>("Inotify", "/home/nikita/C++/Pet_project/logs_folder/inotify_logs");
+    if (!create_dir_if_not_exist())
+    {
+        return;
+    }
+    logger = std::make_unique<Logger>("Inotify", logs_folder.c_str());
+    if (!logger->whether_started())
+    {
+        return;
+    }
+    create_inotify();
+    logger->make_record(std::string("Inotify started"));
+}
+
+Inotify_module::Inotify_module(const std::string& songs_folder_, std::unique_ptr<Logger> logger_): songs_folder(songs_folder_), logger(std::move(logger_))
+{
     if (!logger->whether_started())
     {
         return;
@@ -67,10 +81,59 @@ void Inotify_module::create_inotify()
     }
 }
 
-void Inotify_module::add_folder(std::string folder)
+bool Inotify_module::create_dir_if_not_exist()
 {
+    namespace fs = std::filesystem;
+    fs::path songs_folder_path{songs_folder};
+    if (fs::exists(songs_folder_path))
+    {
+        return true;
+    }
+    std::cout << "Specified songs directory doesn't exist, create ";
+    char c;
+    std::error_code e_c;
+    while(true)
+    {
+        std::cout << "[y/n]?\n";
+        if (!(std::cin >> c))
+        {
+            std::cin.clear();
+            continue;
+        }
+        std::cin.get();
+        switch (c)
+        {
+        case 'y' :
+            if (!std::filesystem::create_directories(songs_folder_path, e_c))
+            {
+                std::cerr << "Unable to create specified directory for songs files: " << e_c.message() << std::endl;
+                return false;
+            }
+            return true;
+            break;
+        case 'n' :
+            return false;
+            break;
+        default:
+            if (std::cin.rdstate() == std::ios_base::badbit)
+            {
+                return false;
+            } else
+            {
+                continue;
+            }
+        }
+    }
+}
+
+void Inotify_module::set_folder(std::string folder)
+{
+    if (!create_dir_if_not_exist())
+    {
+        return ;
+    }
     songs_folder = folder;
-    logger = std::make_shared<Logger>("Inotify", "/home/nikita/C++/Pet_project/logs_folder/inotify_logs");
+    logger = std::make_unique<Logger>("Inotify", folder.c_str());
     if (!logger->whether_started())
     {
         std::cerr << "Unable to start logger, folder not added" << std::endl;

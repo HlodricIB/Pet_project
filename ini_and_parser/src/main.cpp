@@ -3,7 +3,7 @@
 
 int main(int argc, char *argv[])
 {
-    std::shared_ptr<Parser> parser_db;
+    std::shared_ptr<Parser> parser_db = std::make_shared<Parser_DB>();
     std::shared_ptr<Parser> parser_inotify = std::make_shared<Parser_Inotify>();
     if (argc > 2)
     {

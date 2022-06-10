@@ -6,6 +6,7 @@
 #include <exception>
 #include <memory>
 #include <filesystem>
+#include <cinttypes>
 #include "boost/property_tree/ptree.hpp"
 #include "boost/property_tree/ini_parser.hpp"
 
@@ -63,6 +64,7 @@ public:
     explicit Parser_DB(const char*);
     explicit Parser_DB(const std::string config_filename): Parser_DB(config_filename.c_str()) { }
     explicit Parser_DB(const prop_tree::ptree&);
+    explicit Parser_DB(const Config_searching& c_s): Parser_DB(c_s.return_path().c_str()) { }   //Not tested yet!!!!
     explicit Parser_DB(const Parser_DB&);
     Parser_DB& operator=(const Parser_DB&);
     ~Parser_DB() override;
@@ -73,7 +75,7 @@ public:
 class Parser_Inotify : public Parser
 {
 private:
-    size_t size_char_ptr_ptr;
+    size_t size_char_ptr_ptr{0};
     char** paths{nullptr};
     void constructing_massives(const prop_tree::ptree&);
     void copying_massives(const Parser_Inotify&);
@@ -83,6 +85,7 @@ public:
     explicit Parser_Inotify(const char*);
     explicit Parser_Inotify(const std::string& config_filename): Parser_Inotify(config_filename.c_str()) { }
     explicit Parser_Inotify(const prop_tree::ptree&);
+    explicit Parser_Inotify(const Config_searching& c_s): Parser_Inotify(c_s.return_path().c_str()) { } //Not tested yet!!!
     explicit Parser_Inotify(const Parser_Inotify&);
     Parser_Inotify& operator=(const Parser_Inotify&);
     ~Parser_Inotify() override;
