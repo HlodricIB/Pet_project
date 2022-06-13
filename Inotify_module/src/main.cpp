@@ -1,5 +1,6 @@
 #include <iostream>
 #include "inotify_module.h"
+#include "handler.h"
 
 int main()
 {
@@ -21,6 +22,5 @@ int main()
 
     char c;
     std::cin.get(c);
-
     return 0;
 }

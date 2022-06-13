@@ -25,11 +25,11 @@ DB_module::DB_module(const char* conninfo)
 
 //std::mutex iom;
 
-future_result DB_module::exec_command(const char* command) const
+future_result DB_module::exec_command(const std::vector<std::string>& command) const
 {
     std::promise<shared_PG_result> PG_result_promise;
     future_result res = PG_result_promise.get_future();
-    auto lambda = [this, PG_result_promise = std::move(PG_result_promise), command] () mutable {
+    auto lambda = [this, PG_result_promise = std::move(PG_result_promise), command = std::move(command)] () mutable {
         PGconn* conn{nullptr};
         while (true)
         {
@@ -42,7 +42,7 @@ future_result DB_module::exec_command(const char* command) const
             }
         }
         //auto start3 = std::chrono::high_resolution_clock::now();
-        shared_PG_result res = std::make_shared<PG_result>(PQexec(conn, command));
+        shared_PG_result res = std::make_shared<PG_result>(PQexec(conn, command.begin()->c_str()));
         /*auto stop3 = std::chrono::high_resolution_clock::now();
         std::unique_lock<std::mutex> lk(iom);
         std::cout << "From lambda: " << std::chrono::duration<double, std::micro>(stop3 - start3).count() << std::endl;

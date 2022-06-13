@@ -150,10 +150,13 @@ void display_exec_result_sync(PGresult* res)
 void fill_table(const char* conninfo)
 {
     PGconn* conn = PQconnectdb(conninfo);
+    PGresult* res;
     for (int i = 0; i != 5; ++i)
     {
-        PGresult* res = PQexec(conn, "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, 'song1', 001)");
+        res = PQexec(conn, "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, 'song1', 001)");
         PQclear(res);
     }
+    res = PQexec(conn, "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, 'song2', 001)");
+    PQclear(res);
     PQfinish(conn);
 }

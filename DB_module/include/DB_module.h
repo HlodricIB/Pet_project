@@ -105,8 +105,8 @@ class DB_module
 {
 private:
     std::condition_variable conn_cond;
-    std::shared_ptr<connection_pool> conns{0}; //Shared_ptr to pool of established connections
-    std::shared_ptr<thread_pool> threads{0};   //Shared_ptr to pool of threads
+    std::shared_ptr<connection_pool> conns{nullptr}; //Shared_ptr to pool of established connections
+    std::shared_ptr<thread_pool> threads{nullptr};   //Shared_ptr to pool of threads
     shared_PG_result async_command_execution(const char*) const;
     size_t conns_threads_count() const;
 public:
@@ -114,7 +114,7 @@ public:
     explicit DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };
-    future_result exec_command(const char*) const;
+    future_result exec_command(const std::vector<std::string>&) const;
     std::pair<int, int> conns_threads_amount() const;
 };
 

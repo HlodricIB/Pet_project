@@ -12,6 +12,7 @@
 #include "logger.h"
 #include "parser.h"
 #include "DB_module.h"
+#include "handler.h"
 
 class Inotify_module
 {
@@ -24,6 +25,7 @@ private:
     int fd{-1}; //File descriptor corresponding to the initialized instance of inotify
     int wd{-1}; //Watch descriptor corresponding to the initialized instance of inotify
     std::thread watching_thread;
+    std::shared_ptr<Handler> handler{0};
     bool create_dir_if_not_exist();
     void create_inotify();
     void watching();
@@ -46,54 +48,9 @@ public:
     bool if_no_error(std::string&) const;  //Overloaded variant with argument is to store symbolic name of possible error if it's occured
     void start_watching() { watching_thread = std::thread([this] () { this->watching(); }); }
     void stop_watching() { done = true; }
-    void set_folder(std::string);
+    void set_folder(std::string);   //To set folder to watch for
+    void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //To set events handler
 };
-
-class Concrete_handler
-{
-public:
-    Concrete_handler() { }
-    void concrete_handle(int t) { std::cout << t << std::endl; }
-    virtual ~Concrete_handler() = 0;
-};
-
-class DB_handler : public Concrete_handler
-{
-public:
-    void concrete_handle(int t) { std::cout << t << std::endl; }
-};
-
-
-
-class Handler
-{
-    std::function<void()> f;
-/*private:
-    class Concrete_base
-    {
-    public:
-        virtual void call() = 0;
-        virtual ~Concrete_base() { }
-    };
-    std::unique_ptr<Concrete_base> concrete_handler;
-    template<typename C, typename...Args>
-    class Concrete_type : Concrete_base
-    {
-    private:
-        C c;
-    public:
-        Concrete_type(C c_): c(c_) { }
-        void call() override { c(Args...args); }
-    };*/
-public:
-    template<typename C, typename...Args>
-    Handler(C c, Args...args) { f([c, args] ()->void { c(args...);}); }
-    virtual ~Handler() = 0;
-    template<typename...Args>
-    void handle(Args...args) { (*concrete_handler).concrete_handle(args...); };
-};
-
-
 
 
 
