@@ -107,5 +107,5 @@ void Logger::make_record(const std::string& event)
 {
     auto now = std::chrono::system_clock::now();
     auto now_time_t = std::chrono::system_clock::to_time_t(now);
-    f_stream << std::put_time(std::localtime(&now_time_t), "%c \t") << event << "\n";
+    f_stream << std::put_time(std::localtime(&now_time_t), "%c \t") << event << "\n" << std::flush;
 }

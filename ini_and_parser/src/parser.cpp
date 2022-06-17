@@ -245,12 +245,27 @@ void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
     int char_i = 0;
     size_char_ptr_ptr = section_ptree.size();
     paths = new char*[size_char_ptr_ptr + 1];
-    for (const auto& i : section_ptree)
+    std::vector<std::string> keys{"songs_folder", "logs_folder", "max_log_file_size"};
+    prop_tree::ptree::const_assoc_iterator it;
+    auto eq_end = section_ptree.not_found();
+    for (const auto& i : keys)
     {
-        auto paths_size = i.second.data().size() + 1;
-        paths[char_i] = new char[paths_size];
-        std::strncpy(paths[char_i], i.second.data().c_str(), paths_size);
-        ++char_i;
+        it = section_ptree.find(i);
+        if (it != eq_end)
+        {
+            std::string val = it->second.data();
+            auto paths_size = val.size() + 1;
+            paths[char_i] = new char[paths_size];
+            std::strncpy(paths[char_i], val.c_str(), paths_size);
+            std::cout << paths_size << '\t' << paths[char_i] << std::endl;
+            ++char_i;
+        } else
+        {
+            std::cerr << i << " key in config file not found\n" << std::flush;
+            paths = nullptr;
+            return;
+        }
+
     }
 }
 

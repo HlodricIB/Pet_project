@@ -82,8 +82,8 @@ int main()
         auto stop_showing = std::chrono::high_resolution_clock::now();
         showing_async = std::chrono::duration<double, std::micro>(stop_showing - start_showing).count();
         std::cout << "Truncate and delete" << std::endl;
-        db.exec_command("TRUNCATE song_table RESTART IDENTITY");
-        db.exec_command("DELETE FROM log_table; ALTER SEQUENCE log_table_id_seq RESTART WITH 1");
+        db.exec_command({"TRUNCATE song_table RESTART IDENTITY"});
+        db.exec_command({"DELETE FROM log_table; ALTER SEQUENCE log_table_id_seq RESTART WITH 1"});
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
@@ -100,7 +100,7 @@ void async_handle(const DB_module& db, std::vector<std::string>& query, future_r
     size_t i = 0;
     for ( ; i != query.size(); ++i)
     {
-        auto res = db.exec_command(query[i].c_str());
+        auto res = db.exec_command({query[i].c_str()});
         async_res[i] = std::move(res);
         //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -157,6 +157,8 @@ void fill_table(const char* conninfo)
         PQclear(res);
     }
     res = PQexec(conn, "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, 'song2', 001)");
+    /*ExecStatusType res_status = PQresultStatus(res);
+    std::cout << PQresStatus(res_status) << std::endl;*/
     PQclear(res);
     PQfinish(conn);
 }

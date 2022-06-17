@@ -1,7 +1,7 @@
 #include <functional>
 #include "handler.h"
 
-void Inotify_DB_handler::handle(const std::vector<std::string> &arguments)
+bool Inotify_DB_handler::handle(const std::vector<std::string> &arguments)
 {
     std::string command;
     if (arguments[0] == "add")
@@ -10,62 +10,50 @@ void Inotify_DB_handler::handle(const std::vector<std::string> &arguments)
         command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
                 "INSERT INTO song_table (id, song_name, song_uid) VALUES (DEFAULT, "
                 + arguments[1] + ", " + std::to_string(uid) + "); COMMIT";
-        auto future_res = DB_ptr->exec_command({command});
-        auto lambda = [future_res = std::move(future_res)] () mutable {
-            auto res = future_res.get();
-        };
-        if (t_pool_ptr)
-        {
-            t_pool_ptr->push_task(lambda);
-        } else
-        {
-            lambda();
-        }
-        return;
+        exec_command(command);
+        return true;
     }
     if (arguments[0] == "delete")
     {
         command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
                 "DELETE FROM song_table WHERE song_name = '" + arguments[1] + "'; COMMIT";
-        auto i = DB_ptr->exec_command({command});
-        auto future_res = DB_ptr->exec_command({command});
-        auto lambda = [future_res = std::move(future_res)] () mutable {
-            auto res = future_res.get();
-        };
-        if (t_pool_ptr)
-        {
-            t_pool_ptr->push_task(lambda);
-        } else
-        {
-            lambda();
-        }
-        return;
+        exec_command(command);
+        return true;
     }
     if (arguments[0] == "dir_del")
     {
         command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY; COMMIT";
-        auto i = DB_ptr->exec_command({command});
-        auto future_res = DB_ptr->exec_command({command});
-        auto lambda = [future_res = std::move(future_res)] () mutable {
-            auto res = future_res.get();
-        };
-        if (t_pool_ptr)
-        {
-            t_pool_ptr->push_task(lambda);
-        } else
-        {
-            lambda();
-        }
-        return;
+        exec_command(command);
+        return true;
     }
     if (arguments[0] == "refresh")
     {
-        auto amount = arguments.size() - 1;
+        handle({std::string("dir_del")});   //Clearing previous song list
+        auto amount = arguments.size();
         std::string add("add");
-        for (std::vector<std::string>::size_type i = 0; i != amount; ++i)
+        for (std::vector<std::string>::size_type i = 1; i != amount; ++i)
         {
             handle({add, arguments[i]});
         }
-        return;
+        return true;
     }
+    return false;
+}
+
+void Inotify_DB_handler::exec_command(const std::string& command)
+{
+    auto future_res = DB_ptr->exec_command(command, true);
+    auto lambda = [future_res = std::move(future_res), command] () mutable {
+        auto res = future_res.get();
+        if (res->res_succeed())
+        {
+            return;
+        } else
+        {
+            std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_status() << ", executing: " << command << " query" << std::endl;
+            return;
+        }
+    };
+    t_pool_ptr->push_task_back(std::move(lambda));
+    return;
 }

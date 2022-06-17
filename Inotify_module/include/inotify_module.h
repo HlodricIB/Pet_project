@@ -17,7 +17,7 @@
 class Inotify_module
 {
 private:
-    std::string songs_folder;
+    std::string files_folder;
     std::unique_ptr<Logger> logger{nullptr};
     bool if_success{false};    //Flag that shows if function works successfully
     int error_number{0};    //Errno if something is wrong
@@ -30,7 +30,7 @@ private:
     void create_inotify();
     void watching();
     void read_handle_event(const int);
-    void refresh_song_list() const;
+
 public:
     Inotify_module() { };
     Inotify_module(const std::string&, const std::string&); //First argument is a path to folder to watch for, second is a path to log files dir
@@ -43,13 +43,13 @@ public:
     Inotify_module& operator=(const Inotify_module&) = delete;
     Inotify_module& operator=(Inotify_module&) = delete;
     ~Inotify_module();
-
     bool if_no_error() const { return if_success; };
     bool if_no_error(std::string&) const;  //Overloaded variant with argument is to store symbolic name of possible error if it's occured
     void start_watching() { watching_thread = std::thread([this] () { this->watching(); }); }
     void stop_watching() { done = true; }
-    void set_folder(std::string);   //To set folder to watch for
+    void set_folder(std::string, bool);   //To set folder to watch for, second argument is to show create logger or not
     void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //To set events handler
+    void refresh_file_list() const;
 };
 
 

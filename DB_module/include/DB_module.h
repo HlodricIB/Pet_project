@@ -20,10 +20,10 @@ private:
     mutable std::mutex mut;
     std::deque<PGconn*> conns_deque;    //Deque is because we need pop operations
     int conns_established{0};
-    void make_connections(size_t conn_count, std::function<PGconn*()>, bool);   //Third argument is telling wether "warming up" connections, filling cache for DB, or not
+    void make_connections(size_t conn_count, std::function<PGconn*()>);
 public:
-    connection_pool(size_t, std::shared_ptr<Parser> parser, bool = false);   //First argument is for setting number of connections to open, third argument is telling whether "warming up" connections, filling cache for DB, or not
-    explicit connection_pool(size_t = 1, bool = false, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open, second argument is telling whether "warming up" connections, filling cache for DB, or not
+    connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
+    explicit connection_pool(size_t = 1, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
     connection_pool(const connection_pool&) = delete;
     connection_pool& operator=(const connection_pool&) = delete;
     connection_pool(connection_pool&) = delete;
@@ -32,6 +32,7 @@ public:
     bool pull_connection(PGconn*&);
     void push_connection(PGconn* conn) { std::lock_guard<std::mutex> lk(mut); conns_deque.push_front(conn); }   //Push_front because sequential queries on same connection is faster than on different
     int conns_amount() const { return conns_established; }
+    void warm(const std::string&, const std::vector<std::string>&);    //Function for "warming up" (filling cache for DB) established connections, first argument is DB name to "warming up", second is table for "warming up"
 };
 
 class function_wrapper
@@ -42,7 +43,7 @@ private:
         virtual ~impl_base() { }
     };
     std::unique_ptr<impl_base> impl;
-    template< typename F>
+    template<typename F>
     struct impl_type: impl_base {
         F f;
         impl_type(F&& f_): f(std::move(f_)) { }
@@ -80,7 +81,8 @@ public:
     thread_pool(thread_pool&) = delete;
     thread_pool& operator=(thread_pool&) = delete;
     ~thread_pool();
-    void push_task(function_wrapper&&);
+    void push_task_back(function_wrapper&&);
+    void push_task_front(function_wrapper&&);
     int threads_amount() const { return threads_started; }
 };
 
@@ -88,14 +90,18 @@ class PG_result
 {
 private:
     PGresult* result{nullptr};
+    std::string DB_name;    //Database name from which the result was obtained
 public:
     PG_result() { }
-    explicit PG_result(PGresult* res): result(res) { }
+    explicit PG_result(PGresult* res, const std::string DB_name_): result(res), DB_name(DB_name_) { }
     PG_result(PG_result&&);
     PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
-    PGresult* get_result() { return result; }
+    const PGresult* get_result() const { return result; }
+    const std::string res_status() const;
+    bool res_succeed() const;
+    const std::string& res_DB_name() const { return DB_name; }
 };
 
 using shared_PG_result = std::shared_ptr<PG_result>;
@@ -114,8 +120,9 @@ public:
     explicit DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };
-    future_result exec_command(const std::vector<std::string>&) const;
+    future_result exec_command(const std::string&, bool) const;    //First argument is the command to execute, second shows if command have to be executed out of turn
     std::pair<int, int> conns_threads_amount() const;
+    void warming_connections(const std::string& DB_name, const std::vector<std::string>& tables) { conns->warm(DB_name, tables); } //Function for "warming up" (filling cache for DB) established connections in connection pool, first argument is DB name to "warming up", second is table for "warming up"
 };
 
 

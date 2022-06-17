@@ -5,7 +5,7 @@
 #include <system_error>
 #include "inotify_module.h"
 
-Inotify_module::Inotify_module(const std::string& songs_folder_, const std::string& logs_folder):songs_folder(songs_folder_)
+Inotify_module::Inotify_module(const std::string& files_folder_, const std::string& logs_folder): files_folder(files_folder_)
 {
     if (!create_dir_if_not_exist())
     {
@@ -14,16 +14,16 @@ Inotify_module::Inotify_module(const std::string& songs_folder_, const std::stri
     logger = std::make_unique<Logger>("Inotify", logs_folder.c_str());
     if (!logger->whether_started())
     {
-        return;
+        std::cerr << "Inotify logger didn't start, continue without logging" << std::endl;
     }
     create_inotify();
 }
 
-Inotify_module::Inotify_module(const std::string& songs_folder_, std::unique_ptr<Logger> logger_): songs_folder(songs_folder_), logger(std::move(logger_))
+Inotify_module::Inotify_module(const std::string& files_folder_, std::unique_ptr<Logger> logger_): files_folder(files_folder_), logger(std::move(logger_))
 {
     if (!logger->whether_started())
     {
-        return;
+        std::cerr << "Inotify logger didn't start, continue without logging" << std::endl;
     }
     create_inotify();
 }
@@ -51,7 +51,10 @@ Inotify_module::~Inotify_module()
             perror("close in destructor");
         }
     }
-    logger->make_record(std::string("Inotify stopped"));
+    if (logger)
+    {
+        logger->make_record(std::string("Inotify stopped"));
+    }
 }
 
 void Inotify_module::create_inotify()
@@ -60,7 +63,7 @@ void Inotify_module::create_inotify()
     if (fd != -1)
     {
         wd = inotify_add_watch(fd,
-                               songs_folder.c_str(),
+                               files_folder.c_str(),
                                IN_ONLYDIR | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF);
         if (wd != -1)
         {
@@ -76,19 +79,11 @@ void Inotify_module::create_inotify()
     if (if_success && logger)
     {
         logger->make_record(std::string("Inotify started"));
-        refresh_song_list();
-        logger->make_record("Song list refreshed");
     } else
     {
-        if (if_success)
+        if (logger)
         {
-            refresh_song_list();
-        } else
-        {
-            if (logger)
-            {
-                logger->make_record("Inotify failed to start");
-            }
+            logger->make_record("Inotify failed to start");
         }
     }
 }
@@ -96,7 +91,7 @@ void Inotify_module::create_inotify()
 bool Inotify_module::create_dir_if_not_exist()
 {
     namespace fs = std::filesystem;
-    fs::path songs_folder_path{songs_folder};
+    fs::path songs_folder_path{files_folder};
     if (fs::exists(songs_folder_path))
     {
         return true;
@@ -138,36 +133,46 @@ bool Inotify_module::create_dir_if_not_exist()
     }
 }
 
-void Inotify_module::set_folder(std::string folder)
+void Inotify_module::set_folder(std::string folder, bool add_logger)
 {
     if (!create_dir_if_not_exist())
     {
         return ;
     }
-    songs_folder = folder;
-    logger = std::make_unique<Logger>("Inotify", folder.c_str());
-    if (!logger->whether_started())
+    files_folder = folder;
+    if (add_logger)
     {
-        std::cerr << "Unable to start logger, folder not added" << std::endl;
-        return;
+        logger = std::make_unique<Logger>("Inotify", folder.c_str());
+        if (!logger->whether_started())
+        {
+            std::cerr << "Unable to start logger, continue without logging" << std::endl;
+        }
     }
     create_inotify();
 }
 
-void Inotify_module::refresh_song_list() const
+void Inotify_module::refresh_file_list() const
 {
     namespace  fs = std::filesystem;
-    fs::path song_folder_path{songs_folder};
-    std::error_code ec;
-    std::vector<std::string> song_list(1, "refresh");
-    for (fs::directory_entry const& entry : fs::directory_iterator(song_folder_path))
+    if(logger)
     {
-        if (entry.is_regular_file(ec) && (!ec) )
+        logger->make_record("Refreshing files list started");
+    }
+    fs::path files_folder_path{files_folder};
+    std::error_code ec;
+    std::vector<std::string> files_list(1, "refresh");
+    for (fs::directory_entry const& entry : fs::directory_iterator(files_folder_path))
+    {
+        if (entry.is_regular_file(ec) && (!ec))
         {
-            song_list.push_back((entry.path()).filename().string());
+            files_list.push_back((entry.path()).filename().string());
         }
     }
-    handler->handle(song_list);
+    if(logger)
+    {
+        logger->make_record("Refreshing files list completed");
+    }
+    handler->handle(files_list);
 }
 
 void Inotify_module::watching()
@@ -222,7 +227,6 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file created"));
             }
-
             handler->handle({"add", std::string(event->name)});
         }
         if (event->mask & IN_DELETE)
@@ -256,7 +260,7 @@ void Inotify_module::read_handle_event(const int buf_size)
                 logger->make_record(std::string("Songs folder was deleted"));
             }
             handler->handle({"dir_del"});
-            songs_folder.clear();
+            files_folder.clear();
             done = true;
         }
         if (event->mask & IN_MOVE_SELF)
@@ -266,7 +270,7 @@ void Inotify_module::read_handle_event(const int buf_size)
                 logger->make_record(std::string("Songs folder was moved to another location"));
             }
             handler->handle({"dir_del"});
-            songs_folder.clear();
+            files_folder.clear();
             done = true;
         }
         i += (event_size + event->len);
