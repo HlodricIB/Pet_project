@@ -1,7 +1,7 @@
 #include <functional>
 #include "handler.h"
 
-bool Inotify_DB_handler::handle(const std::vector<std::string> &arguments)
+bool Inotify_DB_handler::handle(const std::vector<std::string>& arguments)
 {
     std::string command;
     if (arguments[0] == "add")
