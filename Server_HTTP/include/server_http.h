@@ -53,12 +53,37 @@ private:
         {
             std::cout << "After first enter: " << shared_from_this().use_count() << c << std::endl;
             yield timer.async_wait(boost::beast::bind_front_handler(&Timer::wait, std::move(*this)));
+            //yield timer.async_wait(boost::beast::bind_front_handler(&Timer::wait, shared_from_this()));
             //std::cout << "After yield enter: " << shared_from_this().use_count() << c << std::endl;
         }
-        std::cout << a << c << " address of c: " << static_cast<void*>(&c) << std::endl;
+        std::cout << a << c << " address of c (this): " << static_cast<void*>(&c) << std::endl;
+        //std::cout << a << c << " address of c (shared_from_this()): " << static_cast<void*>(&(shared_from_this()->c)) << std::endl;
     }
 
 #include <boost/asio/unyield.hpp>
+};
+
+class Not_derived
+{
+private:
+
+public:
+    int a{5};
+    ~Not_derived() { }
+    void moving(std::shared_ptr<Not_derived>& this_ptr_) {
+        boost::ignore_unused(a);
+        auto this_ptr = std::shared_ptr<Not_derived>(this_ptr_);
+        std::cout << "Count of Not_derived in moving(): " << this_ptr.use_count() << "; a= " << this_ptr->a  << std::endl;
+        std::cout << "Address of a before moving(this): " << static_cast<void*>(&a) << "Address of a before moving(this_ptr): " << static_cast<void*>(&(this_ptr->a)) << std::endl;
+        moved_to(std::move(*this));
+        std::cout << "Count of Not_derived after moved_to(): " << this_ptr.use_count() << "; a= " << this_ptr->a   << std::endl;
+        std::cout << "Address of a after moving: " << static_cast<void*>(&a) << "Address of a before moving(this_ptr): " << static_cast<void*>(&(this_ptr->a)) << std::endl;
+    }
+    void moved_to(Not_derived&& this_) {
+        this_.a = 10;
+        std::cout << this_.a << std::endl;
+        return;
+    }
 };
 
 
