@@ -257,7 +257,6 @@ void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
             auto paths_size = val.size() + 1;
             paths[char_i] = new char[paths_size];
             std::strncpy(paths[char_i], val.c_str(), paths_size);
-            std::cout << paths_size << '\t' << paths[char_i] << std::endl;
             ++char_i;
         } else
         {
