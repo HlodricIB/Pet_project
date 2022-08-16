@@ -165,7 +165,7 @@ void Inotify_module::refresh_file_list() const
     {
         if (entry.is_regular_file(ec) && (!ec))
         {
-            files_list.push_back((entry.path()).filename().string());
+            files_list.push_back('\'' + (entry.path()).filename().string() + '\'');
         }
     }
     if(logger)
@@ -227,7 +227,7 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file created"));
             }
-            handler->handle({"add", std::string(event->name)});
+            handler->handle({"add", '\'' + std::string(event->name) + '\''});
         }
         if (event->mask & IN_DELETE)
         {
@@ -235,7 +235,7 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file deleted"));
             }
-            handler->handle({"delete", std::string(event->name)});
+            handler->handle({"delete", '\'' + std::string(event->name) + '\''});
         }
         if (event->mask & IN_MOVED_FROM)
         {
@@ -243,7 +243,7 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file moved from songs folder"));
             }
-            handler->handle({"delete", std::string(event->name)});
+            handler->handle({"delete", '\'' + std::string(event->name) + '\''});
         }
         if (event->mask & IN_MOVED_TO)
         {
@@ -251,7 +251,7 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file moved to songs folder"));
             }
-            handler->handle({"add", std::string(event->name)});
+            handler->handle({"add", '\'' + std::string(event->name) + '\''});
         }
         if (event->mask & IN_DELETE_SELF)
         {
