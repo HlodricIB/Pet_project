@@ -4,11 +4,14 @@
 #include <string_view>
 #include <string>
 #include <memory>
+#include <map>
+#include <filesystem>
 
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/string_body.hpp>
 
+#include "parser.h"
 
 //#include <chrono>
 //#include <iostream>
@@ -37,25 +40,26 @@ private:
         {"weba", "audio/webm"},
         {"3gp", "audio/3gpp"},
         {"3g2", "audio/3gpp2"}};
+public:
     std::string_view mime_type(std::string_view) override;
 };
 
 class Find_file
 {
 private:
-
+    std::filesystem::path files_path;
+public:
+    explicit Find_file(const char* files_path_): files_path(files_path_) { };
+    bool find(std::string_view&);
 };
 
 namespace b_b_http = boost::beast::http;
 
-std::string_view mime_type(std::string_view);
-std::string full_filename(std::string_view);
-
 class Server_HTTP
 {
 private:
-    std::string_view mime_type(std::string_view);
-    std::string full_filename(std::string_view);
+    std::shared_ptr<Mime_types> mime_type;
+    std::shared_ptr<Find_file> find_file;
 
     template<class Body, class Allocator, class Sender>
     void

@@ -1,5 +1,4 @@
-#include <map>
-#include <filesystem>
+#include <functional>
 #include "server_http.h"
 
 std::string_view Audio_mime_type::mime_type(std::string_view target)
@@ -18,29 +17,40 @@ std::string_view Audio_mime_type::mime_type(std::string_view target)
     return "application/octet-stream";
 }
 
-std::string full_filename(std::string_view target)
+bool Find_file::find(std::string_view& target)
 {
+    if (target.size() == 0 || target.back() == '/' || target.find("..") != std::string_view::npos)
+    {
+        target = "Illegal target filename";
+        return false;
+    }
+    static std::function<bool(std::string_view)> compare;
     if (target.back() == '*')
     {
         target.remove_suffix(1);
-    } else
-    {
-        return std::string(target);
+        compare = [&target] (std::string_view curr_file)->bool {
+            if (curr_file.starts_with(target))
+            {
+                target = curr_file;
+                return true;
+            }
+            return false; };
+    } else {
+        compare = [target] (std::string_view curr_file)->bool { return curr_file == target; };
     }
-    namespace f_s = std::filesystem;
-    f_s::path songs_dir{"/home/nikita/C++/Pet_project/songs_folder"};
     std::string_view curr_file;
-    for (auto const& dir_entry : f_s::directory_iterator{songs_dir})
+    for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
     {
         if (dir_entry.is_regular_file())
         {
             curr_file = dir_entry.path().filename().c_str();
-            if (curr_file.starts_with(target))
+            if (compare(curr_file))
             {
-                return std::string(curr_file);
+                return true;
             }
         }
     }
-    return std::string{};
+    target = "Target file not found";
+    return false;
 }
 

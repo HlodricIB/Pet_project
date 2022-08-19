@@ -52,6 +52,4 @@ public:
     void refresh_file_list() const;
 };
 
-
-
 #endif // INOTIFY_MODULE_H

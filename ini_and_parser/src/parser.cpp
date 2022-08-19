@@ -102,6 +102,66 @@ void Config_searching::searching_forward (fs::path& previousDir)
     fs::current_path(upperDir);
 }
 
+Parser::~Parser()
+{
+    clearing_massives();
+}
+
+void Parser::clearing_massives()
+{
+    if (size_char_ptr_ptr != 0)
+    {
+        for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+        {
+            delete [] values[i];
+        }
+        if (keywords)
+        {
+            for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+            {
+                delete [] keywords[i];
+            }
+        }
+        delete [] keywords;
+        delete [] values;
+    }
+}
+
+void Parser::copying_massives(const Parser& p)
+{
+    values = new char*[size_char_ptr_ptr + 1];
+    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+    {
+        auto values_size = strlen(p.values[i]) + 1;
+        values[i] = new char[values_size];
+        std::strncpy(values[i], p.values[i], values_size);
+    }
+    values[size_char_ptr_ptr] = nullptr;
+    if (p.keywords)
+    {
+        keywords = new char*[size_char_ptr_ptr + 1];
+        for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+        {
+            auto keywords_size = strlen(p.keywords[i]) + 1;
+            keywords[i] = new char[keywords_size];
+            std::strncpy(keywords[i], p.keywords[i], keywords_size);
+        }
+        keywords[size_char_ptr_ptr] = nullptr;
+    }
+}
+
+Parser& Parser::operator=(const Parser& rhs)
+{
+    if (this == &rhs)
+    {
+        return *this;
+    }
+    clearing_massives();
+    size_char_ptr_ptr = rhs.size_char_ptr_ptr;
+    copying_massives(rhs);
+    return *this;
+}
+
 Parser_DB::Parser_DB(const prop_tree::ptree& config)
 {
     constructing_massives(config);
@@ -139,53 +199,10 @@ void Parser_DB::constructing_massives(const prop_tree::ptree& config)
     values[char_i] = nullptr;
 }
 
-void Parser_DB::copying_massives(const Parser_DB& p)
-{
-    keywords = new char*[size_char_ptr_ptr + 1];
-    values = new char*[size_char_ptr_ptr + 1];
-    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-    {
-        auto keywords_size = strlen(p.keywords[i]) + 1;
-        auto values_size = strlen(p.values[i]) + 1;
-        keywords[i] = new char[keywords_size];
-        values[i] = new char[values_size];
-        std::strncpy(keywords[i], p.keywords[i], keywords_size);
-        std::strncpy(values[i], p.values[i], values_size);
-    }
-    keywords[size_char_ptr_ptr] = nullptr;
-    values[size_char_ptr_ptr] = nullptr;
-}
-
-void Parser_DB::clearing_massives()
-{
-    if (size_char_ptr_ptr !=0 )
-    {
-        for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-        {
-            delete [] keywords[i];
-            delete [] values[i];
-        }
-        delete [] keywords;
-        delete [] values;
-    }
-}
-
 Parser_DB::Parser_DB(const Parser_DB& p)
 {
     size_char_ptr_ptr = p.size_char_ptr_ptr;
     copying_massives(p);
-}
-
-Parser_DB& Parser_DB::operator=(const Parser_DB& rhs)
-{
-    if (this == &rhs)
-    {
-        return *this;
-    }
-    clearing_massives();
-    size_char_ptr_ptr = rhs.size_char_ptr_ptr;
-    copying_massives(rhs);
-    return *this;
 }
 
 const char* const* Parser_DB::parsed_info_ptr(char m) const
@@ -218,11 +235,6 @@ void Parser_DB::display() const
     }
 }
 
-Parser_DB::~Parser_DB()
-{
-    clearing_massives();
-}
-
 Parser_Inotify::Parser_Inotify(const prop_tree::ptree& config)
 {
     constructing_massives(config);
@@ -244,7 +256,7 @@ void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
     const prop_tree::ptree& section_ptree = config.get_child("Inotify_module");
     int char_i = 0;
     size_char_ptr_ptr = section_ptree.size();
-    paths = new char*[size_char_ptr_ptr + 1];
+    values = new char*[size_char_ptr_ptr + 1];
     std::vector<std::string> keys{"songs_folder", "logs_folder", "max_log_file_size"};
     prop_tree::ptree::const_assoc_iterator it;
     auto eq_end = section_ptree.not_found();
@@ -254,41 +266,17 @@ void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
         if (it != eq_end)
         {
             std::string val = it->second.data();
-            auto paths_size = val.size() + 1;
-            paths[char_i] = new char[paths_size];
-            std::strncpy(paths[char_i], val.c_str(), paths_size);
+            auto values_size = val.size() + 1;
+            values[char_i] = new char[values_size];
+            std::strncpy(values[char_i], val.c_str(), values_size);
             ++char_i;
         } else
         {
             std::cerr << i << " key in config file not found\n" << std::flush;
-            paths = nullptr;
-            return;
+            values = nullptr;
+            break;
         }
 
-    }
-}
-
-void Parser_Inotify::copying_massives(const Parser_Inotify& p)
-{
-    paths = new char*[size_char_ptr_ptr + 1];
-    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-    {
-        auto paths_size = strlen(p.paths[i]) + 1;
-        paths[i] = new char[paths_size];
-        std::strncpy(paths[i], p.paths[i], paths_size);
-    }
-    paths[size_char_ptr_ptr] = nullptr;
-}
-
-void Parser_Inotify::clearing_massives()
-{
-    if (size_char_ptr_ptr != 0)
-    {
-        for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-        {
-            delete [] paths[i];
-        }
-        delete [] paths;
     }
 }
 
@@ -298,27 +286,10 @@ Parser_Inotify::Parser_Inotify(const Parser_Inotify& p)
     copying_massives(p);
 }
 
-Parser_Inotify& Parser_Inotify::operator=(const Parser_Inotify& rhs)
-{
-    if (this == &rhs)
-    {
-        return *this;
-    }
-    clearing_massives();
-    size_char_ptr_ptr = rhs.size_char_ptr_ptr;
-    copying_massives(rhs);
-    return *this;
-}
-
 void Parser_Inotify::display() const
 {
     for (size_t i = 0; i != size_char_ptr_ptr; ++i)
     {
-        std::cout << paths[i] << std::endl;
+        std::cout << values[i] << std::endl;
     }
-}
-
-Parser_Inotify::~Parser_Inotify()
-{
-    clearing_massives();
 }

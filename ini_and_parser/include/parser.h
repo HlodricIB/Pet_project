@@ -43,9 +43,16 @@ namespace prop_tree = boost::property_tree;
 
 class Parser
 {
+private:
+    void clearing_massives();
+protected:
+    size_t size_char_ptr_ptr{0};
+    char** keywords{nullptr};
+    char** values{nullptr};
+    void copying_massives(const Parser&);
 public:
-    Parser() { }
-    virtual ~Parser() { }
+    Parser& operator=(const Parser&);
+    virtual ~Parser();
     virtual const char* const* parsed_info_ptr(char m = 'k') const = 0;
     virtual void display() const = 0;
 };
@@ -53,12 +60,7 @@ public:
 class Parser_DB : public Parser
 {
 private:
-    size_t size_char_ptr_ptr{0};
-    char** keywords{nullptr};
-    char** values{nullptr};
     void constructing_massives(const prop_tree::ptree&);
-    void copying_massives(const Parser_DB&);
-    void clearing_massives();
 public:
     Parser_DB() { };
     explicit Parser_DB(const char*);
@@ -66,8 +68,7 @@ public:
     explicit Parser_DB(const prop_tree::ptree&);
     explicit Parser_DB(const Config_searching& c_s): Parser_DB(c_s.return_path().c_str()) { }   //Not tested yet!!!!
     explicit Parser_DB(const Parser_DB&);
-    Parser_DB& operator=(const Parser_DB&);
-    ~Parser_DB() override;
+    ~Parser_DB() override { };
     const char* const* parsed_info_ptr(char m = 'k') const override;
     void display() const override;
 };
@@ -75,11 +76,7 @@ public:
 class Parser_Inotify : public Parser
 {
 private:
-    size_t size_char_ptr_ptr{0};
-    char** paths{nullptr};
     void constructing_massives(const prop_tree::ptree&);
-    void copying_massives(const Parser_Inotify&);
-    void clearing_massives();
 public:
     Parser_Inotify() { };
     explicit Parser_Inotify(const char*);
@@ -87,9 +84,8 @@ public:
     explicit Parser_Inotify(const prop_tree::ptree&);
     explicit Parser_Inotify(const Config_searching& c_s): Parser_Inotify(c_s.return_path().c_str()) { } //Not tested yet!!!
     explicit Parser_Inotify(const Parser_Inotify&);
-    Parser_Inotify& operator=(const Parser_Inotify&);
-    ~Parser_Inotify() override;
-    const char* const* parsed_info_ptr(char) const override { return paths; };
+    ~Parser_Inotify() override { };
+    const char* const* parsed_info_ptr(char) const override { return values; };
     void display() const override;
 };
 

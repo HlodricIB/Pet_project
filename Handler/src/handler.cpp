@@ -28,7 +28,14 @@ bool Inotify_DB_handler::handle(const std::vector<std::string>& arguments)
     }
     if (arguments[0] == "refresh")
     {
-        handle({std::string("dir_del")});   //Clearing previous song list
+        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY; COMMIT";
+        auto future_res = DB_ptr->exec_command(command, true);   //Clearing previous song list
+        auto res = future_res.get();    //Have to block here to avoid possibility of truncating subsequent addings
+        if (!res->res_succeed())
+        {
+            std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_status() << ", executing: " << command << " query" << std::endl;
+            return false;
+        }
         auto amount = arguments.size();
         std::string add("add");
         for (std::vector<std::string>::size_type i = 1; i != amount; ++i)
