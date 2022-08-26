@@ -15,6 +15,7 @@ Inotify_module::Inotify_module(const std::string& files_folder_, const std::stri
     if (!logger->whether_started())
     {
         std::cerr << "Inotify logger didn't start, continue without logging" << std::endl;
+        logger.reset();
     }
     create_inotify();
 }
@@ -24,6 +25,7 @@ Inotify_module::Inotify_module(const std::string& files_folder_, std::unique_ptr
     if (!logger->whether_started())
     {
         std::cerr << "Inotify logger didn't start, continue without logging" << std::endl;
+        logger.reset();
     }
     create_inotify();
 }
@@ -78,7 +80,7 @@ void Inotify_module::create_inotify()
     }
     if (if_success && logger)
     {
-        logger->make_record(std::string("Inotify started"));
+        logger->make_record("Inotify started");
     } else
     {
         if (logger)

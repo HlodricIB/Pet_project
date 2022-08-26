@@ -6,18 +6,26 @@
 #include <memory>
 #include <map>
 #include <filesystem>
+#include <thread>
 
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/string_body.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
 
 #include "parser.h"
+#include "logger.h"
 
 //#include <chrono>
 //#include <iostream>
 //#include <boost/asio/steady_timer.hpp>
 //#include <boost/asio/coroutine.hpp>
 //#include <boost/beast/core/bind_handler.hpp>
+
+namespace server_http
+{
 
 class Mime_types
 {
@@ -53,27 +61,71 @@ public:
     bool find(std::string_view&);
 };
 
-namespace b_b_http = boost::beast::http;
+namespace b_a = boost::asio;
+
+//An order of char* returned by Parser
+enum
+{
+    ADDRESS,
+    PORT,
+    SERVER_NAME,
+    FILES_FOLDER,
+    LOGS_FOLDER,
+    MAX_LOG_FILE_SIZE,
+    NUM_THREADS
+};
 
 class Server_HTTP
 {
 private:
+    std::shared_ptr<Parser> parser{0};
+    int num_threads{0};
+    b_a::io_context ioc;
+    std::shared_ptr<Logger> logger{0};
+    std::vector<std::thread> ioc_threads;   //Threads for ioc to run
+    void run();
+public:
+    Server_HTTP(std::shared_ptr<Parser>);
+    Server_HTTP(const Server_HTTP&) = delete;
+    Server_HTTP(Server_HTTP&) = delete;
+    Server_HTTP& operator=(const Server_HTTP&) = delete;
+    Server_HTTP& operator=(Server_HTTP&) = delete;
+    ~Server_HTTP() { /*Joining threads and, maybe, stopping ioc*/ }
+};
+
+namespace b_b_http = boost::beast::http;
+//As declared in latest versions of boost/asio/ip/basic_endpoint.hpp
+typedef uint_least16_t port_type;
+
+class Listener
+{
+private:
+    std::shared_ptr<Parser> parser{0};
+    std::shared_ptr<Logger> logger{0};
+public:
+    Listener(std::shared_ptr<Parser>, std::shared_ptr<Logger>);
+};
+
+class Session
+{
+private:
+    std::shared_ptr<Logger> logger{0};
     std::shared_ptr<Mime_types> mime_type;
     std::shared_ptr<Find_file> find_file;
-
+    std::string_view server_name;
     template<class Body, class Allocator, class Sender>
     void
-    handle_request(std::string_view filename_base, b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender&& sender)
+    handle_request(std::string_view filepath_base, b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender&& sender)
     {
-        boost::ignore_unused(filename_base);
+        boost::ignore_unused(filepath_base);
         boost::ignore_unused(req);
         boost::ignore_unused(sender);
     }
 public:
-    Server_HTTP ();
+    Session(std::shared_ptr<Parser>, std::shared_ptr<Logger>);
+
 };
+}   //namespace server_http
+
 
 #endif // SERVER_HTTP_H
-
-
-

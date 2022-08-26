@@ -162,6 +162,50 @@ Parser& Parser::operator=(const Parser& rhs)
     return *this;
 }
 
+void Parser::constructing_massives(const prop_tree::ptree& section_ptree)
+{
+    int char_i = 0;
+    size_char_ptr_ptr = section_ptree.size();
+    keywords = new char*[size_char_ptr_ptr + 1];
+    values = new char*[size_char_ptr_ptr + 1];
+    for (const auto& i : section_ptree)
+    {
+        auto first_size = i.first.size() + 1;
+        auto second_size = i.second.data().size() + 1;
+        keywords[char_i] = new char[first_size];
+        values[char_i] = new char[second_size];
+        std::strncpy(keywords[char_i], i.first.c_str(), first_size);
+        std::strncpy(values[char_i], i.second.data().c_str(), second_size);
+        ++char_i;
+    }
+    keywords[char_i] = nullptr;
+    values[char_i] = nullptr;
+}
+
+void Parser::display() const
+{
+    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+    {
+        std::cout << keywords[i] << " = " << values[i] << std::endl;
+    }
+}
+
+std::pair<bool, std::string_view> Parser::validate_parsed(const size_t expected_count, const char* const expected[])
+{
+    if (size_char_ptr_ptr > expected_count)
+    {
+        return std::make_pair(false, std::string_view("Parsed count of keywords is less than it needed"));
+    }
+    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
+    {
+        if (std::strcmp(keywords[i], expected[i]) != 0)
+        {
+            return std::make_pair(false, std::string_view(expected[i]));
+        }
+    }
+    return std::make_pair(true, std::string_view());
+}
+
 Parser_DB::Parser_DB(const prop_tree::ptree& config)
 {
     constructing_massives(config);
@@ -181,22 +225,7 @@ Parser_DB::Parser_DB(const char* config_filename)
 void Parser_DB::constructing_massives(const prop_tree::ptree& config)
 {
     const prop_tree::ptree& section_ptree = config.get_child("DB_module");
-    int char_i = 0;
-    size_char_ptr_ptr = section_ptree.size();
-    keywords = new char*[size_char_ptr_ptr + 1];
-    values = new char*[size_char_ptr_ptr + 1];
-    for (const auto& i : section_ptree)
-    {
-        auto first_size = i.first.size() + 1;
-        auto second_size = i.second.data().size() + 1;
-        keywords[char_i] = new char[first_size];
-        values[char_i] = new char[second_size];
-        std::strncpy(keywords[char_i], i.first.c_str(), first_size);
-        std::strncpy(values[char_i], i.second.data().c_str(), second_size);
-        ++char_i;
-    }
-    keywords[char_i] = nullptr;
-    values[char_i] = nullptr;
+    Parser::constructing_massives(section_ptree);
 }
 
 Parser_DB::Parser_DB(const Parser_DB& p)
@@ -227,14 +256,6 @@ const char* const* Parser_DB::parsed_info_ptr(char m) const
     }
 }
 
-void Parser_DB::display() const
-{
-    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-    {
-        std::cout << keywords[i] << " = " << values[i] << std::endl;
-    }
-}
-
 Parser_Inotify::Parser_Inotify(const prop_tree::ptree& config)
 {
     constructing_massives(config);
@@ -251,45 +272,52 @@ Parser_Inotify::Parser_Inotify(const char* config_filename)
     constructing_massives(config);
 }
 
-void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
-{
-    const prop_tree::ptree& section_ptree = config.get_child("Inotify_module");
-    int char_i = 0;
-    size_char_ptr_ptr = section_ptree.size();
-    values = new char*[size_char_ptr_ptr + 1];
-    std::vector<std::string> keys{"songs_folder", "logs_folder", "max_log_file_size"};
-    prop_tree::ptree::const_assoc_iterator it;
-    auto eq_end = section_ptree.not_found();
-    for (const auto& i : keys)
-    {
-        it = section_ptree.find(i);
-        if (it != eq_end)
-        {
-            std::string val = it->second.data();
-            auto values_size = val.size() + 1;
-            values[char_i] = new char[values_size];
-            std::strncpy(values[char_i], val.c_str(), values_size);
-            ++char_i;
-        } else
-        {
-            std::cerr << i << " key in config file not found\n" << std::flush;
-            values = nullptr;
-            break;
-        }
-
-    }
-}
-
 Parser_Inotify::Parser_Inotify(const Parser_Inotify& p)
 {
     size_char_ptr_ptr = p.size_char_ptr_ptr;
     copying_massives(p);
 }
 
-void Parser_Inotify::display() const
+void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
 {
-    for (size_t i = 0; i != size_char_ptr_ptr; ++i)
-    {
-        std::cout << values[i] << std::endl;
+    const prop_tree::ptree& section_ptree = config.get_child("Inotify_module");
+    Parser::constructing_massives(section_ptree);
+}
+
+std::pair<bool, std::string_view> Parser_Inotify::validate_parsed()
+{
+    return Parser::validate_parsed(expected_count, expected);
+}
+
+Parser_Server_HTTP::Parser_Server_HTTP(const prop_tree::ptree& config)
+{
+    constructing_massives(config);
+}
+
+Parser_Server_HTTP::Parser_Server_HTTP(const char* config_filename)
+{
+    prop_tree::ptree config;
+    try {
+        prop_tree::ini_parser::read_ini(config_filename, config);
+    }  catch (const prop_tree::ini_parser_error& error) {
+        std::cerr << error.what() << std::endl;
     }
+    constructing_massives(config);
+}
+
+Parser_Server_HTTP::Parser_Server_HTTP(const Parser_Server_HTTP& p)
+{
+    size_char_ptr_ptr = p.size_char_ptr_ptr;
+    copying_massives(p);
+}
+
+void Parser_Server_HTTP::constructing_massives(const prop_tree::ptree& config)
+{
+    const prop_tree::ptree& section_ptree = config.get_child("Server_HTTP");
+    Parser::constructing_massives(section_ptree);
+}
+
+std::pair<bool, std::string_view> Parser_Server_HTTP::validate_parsed()
+{
+    return Parser::validate_parsed(expected_count, expected);
 }

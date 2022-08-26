@@ -34,7 +34,7 @@ private:
 public:
     Inotify_module() { };
     Inotify_module(const std::string&, const std::string&); //First argument is a path to folder to watch for, second is a path to log files dir
-    Inotify_module(const char* songs_folder, const char* logs_folder): Inotify_module(std::string(songs_folder), std::string(logs_folder)) { };    //Argument is a path to folder to watch for, second is a path to log files dir
+    Inotify_module(const char* files_folder, const char* logs_folder): Inotify_module(std::string(files_folder), std::string(logs_folder)) { };    //Argument is a path to folder to watch for, second is a path to log files dir
     explicit Inotify_module(std::shared_ptr<Parser> parser_inotify): Inotify_module((parser_inotify->parsed_info_ptr())[0],
                                                                      std::make_unique<Logger>("Inotify", (parser_inotify->parsed_info_ptr())[1], std::strtoumax((parser_inotify->parsed_info_ptr())[2], nullptr, 10))) { }
     Inotify_module(const std::string&, std::unique_ptr<Logger>); //First argument is a path to folder to watch for

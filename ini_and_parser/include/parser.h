@@ -7,8 +7,10 @@
 #include <memory>
 #include <filesystem>
 #include <cinttypes>
+#include <utility>
 #include "boost/property_tree/ptree.hpp"
 #include "boost/property_tree/ini_parser.hpp"
+#include "boost/core/ignore_unused.hpp"
 
 class c_s_exception : public std::exception
 {
@@ -49,12 +51,15 @@ protected:
     size_t size_char_ptr_ptr{0};
     char** keywords{nullptr};
     char** values{nullptr};
+    void constructing_massives(const prop_tree::ptree&);
     void copying_massives(const Parser&);
+    std::pair<bool, std::string_view> validate_parsed(const size_t, const char* const[]);
 public:
     Parser& operator=(const Parser&);
     virtual ~Parser();
-    virtual const char* const* parsed_info_ptr(char m = 'k') const = 0;
-    virtual void display() const = 0;
+    virtual const char* const* parsed_info_ptr(char m = 'k') const { boost::ignore_unused(m); return values; };
+    void display() const;
+    virtual std::pair<bool, std::string_view> validate_parsed() = 0;
 };
 
 class Parser_DB : public Parser
@@ -68,14 +73,16 @@ public:
     explicit Parser_DB(const prop_tree::ptree&);
     explicit Parser_DB(const Config_searching& c_s): Parser_DB(c_s.return_path().c_str()) { }   //Not tested yet!!!!
     explicit Parser_DB(const Parser_DB&);
-    ~Parser_DB() override { };
+    //~Parser_DB() override { };
     const char* const* parsed_info_ptr(char m = 'k') const override;
-    void display() const override;
+    std::pair<bool, std::string_view> validate_parsed() override { return std::make_pair(true, std::string_view()); }
 };
 
 class Parser_Inotify : public Parser
 {
 private:
+    constexpr static size_t expected_count{3};
+    constexpr static const char* expected[expected_count]{"files_folder", "logs_folder", "max_log_file_size"};
     void constructing_massives(const prop_tree::ptree&);
 public:
     Parser_Inotify() { };
@@ -84,9 +91,25 @@ public:
     explicit Parser_Inotify(const prop_tree::ptree&);
     explicit Parser_Inotify(const Config_searching& c_s): Parser_Inotify(c_s.return_path().c_str()) { } //Not tested yet!!!
     explicit Parser_Inotify(const Parser_Inotify&);
-    ~Parser_Inotify() override { };
-    const char* const* parsed_info_ptr(char) const override { return values; };
-    void display() const override;
+    //~Parser_Inotify() override { };
+    std::pair<bool, std::string_view> validate_parsed() override;
+};
+
+class Parser_Server_HTTP : public Parser
+{
+private:
+    constexpr static int expected_count{7};
+    constexpr static const char* expected[expected_count]{"address", "port", "server_name", "files_folder", "logs_folder", "max_log_file_size", "num_threads"};
+    void constructing_massives(const prop_tree::ptree&);
+public:
+    Parser_Server_HTTP() { };
+    explicit Parser_Server_HTTP(const char*);
+    explicit Parser_Server_HTTP(const std::string& config_filename): Parser_Server_HTTP(config_filename.c_str()) { }
+    explicit Parser_Server_HTTP(const prop_tree::ptree&);
+    explicit Parser_Server_HTTP(const Config_searching& c_s): Parser_Server_HTTP(c_s.return_path().c_str()) { } //Not tested yet!!!
+    explicit Parser_Server_HTTP(const Parser_Server_HTTP&);
+    //~Parser_Server_HTTP() override { };
+    std::pair<bool, std::string_view> validate_parsed() override;
 };
 
 #endif // PARSER_H
