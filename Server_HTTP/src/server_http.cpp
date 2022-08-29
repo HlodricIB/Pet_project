@@ -60,6 +60,16 @@ bool Find_file::find(std::string_view& target)
     return false;
 }
 
+void If_fail::fail_report(boost::system::error_code ec, const char* reason) const
+{
+    std::string message = reason + ec.message();
+    if (logger)
+    {
+        logger->make_record(message);
+    }
+    std::cerr << message << std::endl;
+}
+
 Server_HTTP::Server_HTTP(std::shared_ptr<Parser> parser_): parser(parser_),
     num_threads{std::max<int>(1, std::min<int>(std::thread::hardware_concurrency(), std::atoi(parser->parsed_info_ptr()[NUM_THREADS])))},
     ioc{num_threads}
@@ -76,28 +86,48 @@ Server_HTTP::Server_HTTP(std::shared_ptr<Parser> parser_): parser(parser_),
     }
 }
 
-void Server_HTTP::run()
+Server_HTTP::~Server_HTTP()
 {
-    ioc_threads.reserve(num_threads - 1);
-    for (auto i = 0; i != (num_threads - 1); ++i)
+    ioc.stop();
+    for (auto& t : ioc_threads)
     {
-        ioc_threads.emplace_back(std::thread([&ioc] () { ioc.run(); }));
+        if (t.joinable())
+        {
+            t.join();
+        }
     }
 }
 
-Listener::Listener(std::shared_ptr<Parser> parser_, std::shared_ptr<Logger> logger_): parser(parser_), logger(logger_)
+void Server_HTTP::run()
 {
-    b_a::ip::address address;
-    port_type port{0};
+    std::make_shared<Listener>(logger, parser)->run();
+    ioc_threads.reserve(num_threads - 1);
+    for (auto i = 0; i != (num_threads - 1); ++i)
+    {
+        ioc_threads.emplace_back(std::thread([&ioc = ioc] () { ioc.run(); }));
+    }
+    ioc.run();
+}
 
-
-    boost::system::error_code ec{};
-    address = b_a::ip::make_address(parser->parsed_info_ptr()[ADDRESS], ec);
+Listener::Listener(b_a::io_context& ioc_, std::shared_ptr<Parser> parser_, std::shared_ptr<Logger> logger_): ioc(ioc_), parser(parser_), logger(logger_),
+    _acceptor{b_a::make_strand(ioc)}, _socket{b_a::make_strand(ioc)}
+{
+    if_fail = std::make_shared<If_fail>(logger);
+    boost::system::error_code ec;
+    b_a::ip::address address = b_a::ip::make_address(parser->parsed_info_ptr()[ADDRESS], ec);
     if (ec)
     {
-        logger->make_record({"Something wrong with address, error is: " + ec.message()});
+        if_fail->fail_report(ec, "Something wrong with ip address: ");
+        return ;
     }
-    port = static_cast<port_type>(std::atoi(parser->parsed_info_ptr()[1]));
+    port_type port = static_cast<port_type>(std::atoi(parser->parsed_info_ptr()[1]));
+    b_a_i_t::endpoint _endpoint{address, port};
+    _acceptor.open(_endpoint.protocol(), ec);
+    if (ec)
+    {
+        if_fail->fail_report(ec, "Failed to open acceptor using specified ip address and port: ");
+        return ;
+    }
 }
 
 Session::Session(std::shared_ptr<Parser> parser_, std::shared_ptr<Logger> logger_): logger(logger_)

@@ -14,6 +14,8 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/strand.hpp>
 
 #include "parser.h"
 #include "logger.h"
@@ -61,7 +63,14 @@ public:
     bool find(std::string_view&);
 };
 
-namespace b_a = boost::asio;
+class If_fail
+{
+private:
+    std::shared_ptr<Logger> logger{nullptr};
+public:
+    If_fail(std::shared_ptr<Logger> logger_): logger(logger_) { }
+    void fail_report(boost::system::error_code, const char*) const;
+};
 
 //An order of char* returned by Parser
 enum
@@ -74,6 +83,8 @@ enum
     MAX_LOG_FILE_SIZE,
     NUM_THREADS
 };
+
+namespace b_a = boost::asio;
 
 class Server_HTTP
 {
@@ -90,28 +101,36 @@ public:
     Server_HTTP(Server_HTTP&) = delete;
     Server_HTTP& operator=(const Server_HTTP&) = delete;
     Server_HTTP& operator=(Server_HTTP&) = delete;
-    ~Server_HTTP() { /*Joining threads and, maybe, stopping ioc*/ }
+    ~Server_HTTP();
 };
 
-namespace b_b_http = boost::beast::http;
+namespace b_b = boost::beast;
+namespace b_b_http = b_b::http;
+using b_a_i_t = b_a::ip::tcp;
 //As declared in latest versions of boost/asio/ip/basic_endpoint.hpp
 typedef uint_least16_t port_type;
 
 class Listener
 {
 private:
-    std::shared_ptr<Parser> parser{0};
-    std::shared_ptr<Logger> logger{0};
+    b_a::io_context& ioc;
+    std::shared_ptr<Parser> parser{nullptr};
+    std::shared_ptr<Logger> logger{nullptr};
+    std::shared_ptr<If_fail> if_fail{nullptr};
+    b_a_i_t::acceptor _acceptor;
+    b_a_i_t::socket _socket;
 public:
-    Listener(std::shared_ptr<Parser>, std::shared_ptr<Logger>);
+    Listener(b_a::io_context&, std::shared_ptr<Parser>, std::shared_ptr<Logger>);
+    void run();
 };
 
 class Session
 {
 private:
-    std::shared_ptr<Logger> logger{0};
-    std::shared_ptr<Mime_types> mime_type;
-    std::shared_ptr<Find_file> find_file;
+    std::shared_ptr<Logger> logger{nullptr};
+    std::shared_ptr<If_fail> if_fail{nullptr};
+    std::shared_ptr<Mime_types> mime_type{nullptr};
+    std::shared_ptr<Find_file> find_file{nullptr};
     std::string_view server_name;
     template<class Body, class Allocator, class Sender>
     void
