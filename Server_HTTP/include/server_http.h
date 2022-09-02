@@ -7,7 +7,6 @@
 #include <map>
 #include <filesystem>
 #include <thread>
-
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/string_body.hpp>
@@ -16,15 +15,16 @@
 #include <boost/asio/ip/basic_endpoint.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
-
+#include <boost/system/error_code.hpp>
+#include <boost/asio/coroutine.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
 #include "parser.h"
 #include "logger.h"
 
 //#include <chrono>
 //#include <iostream>
 //#include <boost/asio/steady_timer.hpp>
-//#include <boost/asio/coroutine.hpp>
-//#include <boost/beast/core/bind_handler.hpp>
 
 namespace server_http
 {
@@ -63,12 +63,34 @@ public:
     bool find(std::string_view&);
 };
 
+//Forward declarations for Srvr_hlpr_clss
+class If_fail;
+class Handle_request;
+
+class Srvr_hlpr_clss
+{
+    friend class Server_HTTP;
+    friend class Listener;
+    friend class Session;
+    friend class If_fail;
+    friend class Handle_request;
+private:
+    std::shared_ptr<Parser> parser{nullptr};
+    std::shared_ptr<Logger> logger{nullptr};
+    std::shared_ptr<If_fail> if_fail{nullptr};
+    std::shared_ptr<Mime_types> mime_type{nullptr};
+    std::shared_ptr<Find_file> find_file{nullptr};
+    std::shared_ptr<Handle_request> handle_request{nullptr};
+public:
+    Srvr_hlpr_clss(std::shared_ptr<Parser>);
+};
+
 class If_fail
 {
 private:
     std::shared_ptr<Logger> logger{nullptr};
 public:
-    If_fail(std::shared_ptr<Logger> logger_): logger(logger_) { }
+    If_fail(std::shared_ptr<Srvr_hlpr_clss> s_h_c): logger(s_h_c->logger) { }
     void fail_report(boost::system::error_code, const char*) const;
 };
 
@@ -89,14 +111,13 @@ namespace b_a = boost::asio;
 class Server_HTTP
 {
 private:
-    std::shared_ptr<Parser> parser{0};
+    std::shared_ptr<Srvr_hlpr_clss> s_h_c{nullptr};
     int num_threads{0};
     b_a::io_context ioc;
-    std::shared_ptr<Logger> logger{0};
     std::vector<std::thread> ioc_threads;   //Threads for ioc to run
     void run();
 public:
-    Server_HTTP(std::shared_ptr<Parser>);
+    Server_HTTP(std::shared_ptr<Srvr_hlpr_clss>);
     Server_HTTP(const Server_HTTP&) = delete;
     Server_HTTP(Server_HTTP&) = delete;
     Server_HTTP& operator=(const Server_HTTP&) = delete;
@@ -110,38 +131,52 @@ using b_a_i_t = b_a::ip::tcp;
 //As declared in latest versions of boost/asio/ip/basic_endpoint.hpp
 typedef uint_least16_t port_type;
 
-class Listener
+class Listener : public b_a::coroutine, public std::enable_shared_from_this<Listener>
 {
 private:
     b_a::io_context& ioc;
-    std::shared_ptr<Parser> parser{nullptr};
-    std::shared_ptr<Logger> logger{nullptr};
-    std::shared_ptr<If_fail> if_fail{nullptr};
+    std::shared_ptr<Srvr_hlpr_clss> s_h_c{nullptr};
     b_a_i_t::acceptor _acceptor;
     b_a_i_t::socket _socket;
+    void accepting_loop(boost::system::error_code = { });
 public:
-    Listener(b_a::io_context&, std::shared_ptr<Parser>, std::shared_ptr<Logger>);
-    void run();
+    Listener(b_a::io_context&, std::shared_ptr<Srvr_hlpr_clss>);
+    void run() { accepting_loop(); };
 };
 
-class Session
+class Handle_request
 {
 private:
-    std::shared_ptr<Logger> logger{nullptr};
-    std::shared_ptr<If_fail> if_fail{nullptr};
     std::shared_ptr<Mime_types> mime_type{nullptr};
     std::shared_ptr<Find_file> find_file{nullptr};
+    std::shared_ptr<If_fail> if_fail{nullptr};
     std::string_view server_name;
     template<class Body, class Allocator, class Sender>
     void
-    handle_request(std::string_view filepath_base, b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender&& sender)
+    handle(std::string_view filepath_base, b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender&& sender)
     {
         boost::ignore_unused(filepath_base);
         boost::ignore_unused(req);
         boost::ignore_unused(sender);
     }
 public:
-    Session(std::shared_ptr<Parser>, std::shared_ptr<Logger>);
+    Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Find_file> find_file_, std::shared_ptr<If_fail> if_fail_, std::string_view server_name_):
+        mime_type(mime_type_), find_file(find_file_), if_fail(if_fail_), server_name(server_name_) { }
+};
+
+class Session : public b_a::coroutine, public std::enable_shared_from_this<Session>
+{
+private:
+    b_b::tcp_stream _stream;
+    std::shared_ptr<Srvr_hlpr_clss> s_h_c{nullptr};
+    b_b_http::request<b_b_http::string_body> req;
+    b_b::flat_buffer _buffer;
+    std::shared_ptr<void> _res_sp{nullptr};    //For managing the message to extent it's lifetime for the duration of the async operation
+    void run();
+    void session_loop(bool, boost::system::error_code, size_t);
+
+public:
+    Session(b_a_i_t::socket&& socket, std::shared_ptr<Srvr_hlpr_clss>);
 
 };
 }   //namespace server_http
