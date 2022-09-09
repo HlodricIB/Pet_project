@@ -321,3 +321,36 @@ std::pair<bool, std::string_view> Parser_Server_HTTP::validate_parsed()
 {
     return Parser::validate_parsed(expected_count, expected);
 }
+
+Parser_Client_HTTP::Parser_Client_HTTP(const prop_tree::ptree& config)
+{
+    constructing_massives(config);
+}
+
+Parser_Client_HTTP::Parser_Client_HTTP(const char* config_filename)
+{
+    prop_tree::ptree config;
+    try {
+        prop_tree::ini_parser::read_ini(config_filename, config);
+    }  catch (const prop_tree::ini_parser_error& error) {
+        std::cerr << error.what() << std::endl;
+    }
+    constructing_massives(config);
+}
+
+Parser_Client_HTTP::Parser_Client_HTTP(const Parser_Client_HTTP& p)
+{
+    size_char_ptr_ptr = p.size_char_ptr_ptr;
+    copying_massives(p);
+}
+
+void Parser_Client_HTTP::constructing_massives(const prop_tree::ptree& config)
+{
+    const prop_tree::ptree& section_ptree = config.get_child("Client_HTTP");
+    Parser::constructing_massives(section_ptree);
+}
+
+std::pair<bool, std::string_view> Parser_Client_HTTP::validate_parsed()
+{
+    return Parser::validate_parsed(expected_count, expected);
+}

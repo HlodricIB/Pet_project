@@ -112,4 +112,21 @@ public:
     std::pair<bool, std::string_view> validate_parsed() override;
 };
 
+class Parser_Client_HTTP : public Parser
+{
+private:
+    constexpr static int expected_count{5};
+    constexpr static const char* expected[expected_count]{"host(address)", "port(service)", "client_name", "version", "num_threads"};
+    void constructing_massives(const prop_tree::ptree&);
+public:
+    Parser_Client_HTTP() { };
+    explicit Parser_Client_HTTP(const char*);
+    explicit Parser_Client_HTTP(const std::string& config_filename): Parser_Client_HTTP(config_filename.c_str()) { }
+    explicit Parser_Client_HTTP(const prop_tree::ptree&);
+    explicit Parser_Client_HTTP(const Config_searching& c_s): Parser_Client_HTTP(c_s.return_path().c_str()) { } //Not tested yet!!!
+    explicit Parser_Client_HTTP(const Parser_Client_HTTP&);
+    //~Parser_Server_HTTP() override { };
+    std::pair<bool, std::string_view> validate_parsed() override;
+};
+
 #endif // PARSER_H

@@ -10,7 +10,7 @@
 
 namespace server_http
 {
-std::string_view Audio_mime_type::mime_type(std::string_view target)
+b_b::string_view Audio_mime_type::mime_type(b_b::string_view target)
 {
     size_t pos = target.find_last_of('.');
     if (pos == s_w::npos)
@@ -26,18 +26,18 @@ std::string_view Audio_mime_type::mime_type(std::string_view target)
     return "application/octet-stream";
 }
 
-bool Find_file::find(std::string_view& target)
+bool Find_file::find(b_b::string_view& target)
 {
     if (target.size() == 0 || target.back() == '/' || target.find("..") != std::string_view::npos)
     {
         target = "Illegal target filename";
         return false;
     }
-    static std::function<bool(std::string_view)> compare;
+    static std::function<bool(b_b::string_view)> compare;
     if (target.back() == '*')
     {
         target.remove_suffix(1);
-        compare = [target] (std::string_view curr_file) mutable {
+        compare = [&target] (b_b::string_view curr_file) mutable {
             if (curr_file.starts_with(target))
             {
                 target = curr_file;
@@ -45,9 +45,9 @@ bool Find_file::find(std::string_view& target)
             }
             return false; };
     } else {
-        compare = [target] (std::string_view curr_file)->bool { return curr_file == target; };
+        compare = [target] (b_b::string_view curr_file)->bool { return curr_file == target; };
     }
-    std::string_view curr_file;
+    b_b::string_view curr_file;
     for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
     {
         if (dir_entry.is_regular_file())
@@ -55,6 +55,8 @@ bool Find_file::find(std::string_view& target)
             curr_file = dir_entry.path().filename().c_str();
             if (compare(curr_file))
             {
+                std::string_view temp(curr_file.data(), curr_file.size());
+                filename.swap(temp);
                 return true;
             }
         }
@@ -65,14 +67,14 @@ bool Find_file::find(std::string_view& target)
 
 Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_): parser(parser_)
 {
-    logger = std::make_shared<Logger>(parser->parsed_info_ptr()[SERVER_NAME], parser->parsed_info_ptr()[FILES_FOLDER],
-                                      parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]);
+    logger = std::make_shared<Logger>(parser->parsed_info_ptr()[SERVER_NAME], parser->parsed_info_ptr()[LOGS_FOLDER],
+                                      std::strtoumax((parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]), nullptr, 10));
     if (!logger->whether_started())
     {
         logger.reset();
     }
     if_fail = std::make_shared<If_fail>(logger);
-    mime_type = std::make_shared<Mime_types>();
+    mime_type = std::make_shared<Audio_mime_type>();
     find_file = std::make_shared<Find_file>(parser_->parsed_info_ptr()[FILES_FOLDER]);
     handle_request = std::make_shared<Handle_request>(mime_type, find_file, if_fail, parser_->parsed_info_ptr()[SERVER_NAME]);
 }
@@ -160,6 +162,9 @@ Listener::Listener(b_a::io_context& ioc_, std::shared_ptr<Srvr_hlpr_clss> s_h_c_
     {
         if_fail->fail_report(ec, "Failed to set the maximum length of the queue of pending incoming connections: ");
     }
+    //std::string message =
+    s_h_c->logger->make_record(std::string("Server " + std::string(parser->parsed_info_ptr()[SERVER_NAME]) + " starts listening port "
++ std::string(parser->parsed_info_ptr()[PORT]) + " with IP-address: " + std::string(parser->parsed_info_ptr()[ADDRESS])));
 }
 
 void Listener::accepting_loop(boost::system::error_code ec)
@@ -176,7 +181,7 @@ void Listener::accepting_loop(boost::system::error_code ec)
         {
             if_fail->fail_report(ec, "Failed to accept: ");
         } else {
-            yield std::make_shared<Session>(std::move(_socket), s_h_c);
+            std::make_shared<Session>(std::move(_socket), s_h_c)->run();
         }
         //Make sure each session gets its own strand
         _socket = b_a_i_t::socket(b_a::make_strand(ioc));
@@ -184,10 +189,18 @@ void Listener::accepting_loop(boost::system::error_code ec)
 #include <boost/asio/unyield.hpp>
 }
 
-Session::Session(b_a_i_t::socket&& socket_, std::shared_ptr<Srvr_hlpr_clss> s_h_c_): _stream(socket_), s_h_c(s_h_c_)
+Session::Session(b_a_i_t::socket&& socket_, std::shared_ptr<Srvr_hlpr_clss> s_h_c_): _stream(std::move(socket_)), s_h_c(s_h_c_)
 {
-
-
+    boost::system::error_code ec;
+    auto remote_endpoint = _stream.socket().remote_endpoint(ec);
+    if (ec)
+    {
+        s_h_c->if_fail->fail_report(ec, "Failed to get remote endpoint: ");
+    } else {
+        auto remote_address = remote_endpoint.address();
+        auto remote_port = remote_endpoint.port();
+        s_h_c->logger->make_record("Connected to IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port));
+    }
 }
 
 void Session::run()
@@ -207,19 +220,45 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
         b_b_http::async_write(this->_stream, *res_sp, b_b::bind_front_handler(&Session::session_loop, this->shared_from_this(),
                                                                               res_sp->need_eof()));
     };
+    auto if_fail = s_h_c->if_fail;
+    auto handle_request = s_h_c->handle_request;
 #include <boost/asio/yield.hpp>
     reenter(*this)
     {
         for(;;)
         {
-            //Make the request empty before reading, otherwise the operation behavior is undefined.
+            //Make the request empty before reading, otherwise the operation behavior is undefined
             req = { };
+            //Set the timeout
+            _stream.expires_after(std::chrono::minutes(5));
             yield b_b_http::async_read(_stream, _buffer, req, b_b::bind_front_handler(&Session::session_loop, shared_from_this(), false));
-            if (ec)
+            if (ec == b_b_http::error::end_of_stream)
             {
+                if_fail->fail_report(ec, "The remote host closed the connection: ");
+                break;
 
             }
+            if (ec)
+            {
+                if_fail->fail_report(ec, "Error while reading message: ");
+                return;
+            }
+            yield handle_request->handle(std::move(req), send_lambda);
+            if (ec)
+            {
+                if_fail->fail_report(ec, "Error while writing response: ");
+                return;
+            }
+            if (close)
+            {
+                //This means we should close the connection, usually because the response indicated the "Connection: close" semantic
+                break;
+            }
+            //We're done with the response so delete it
+            _res_sp = nullptr;
         }
+        //Send a TCP shutdown
+        _stream.socket().shutdown(b_a_i_t::socket::shutdown_send, ec);
     }
 #include <boost/asio/unyield.hpp>
 }

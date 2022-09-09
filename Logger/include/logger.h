@@ -18,9 +18,9 @@ private:
     void open_file(const std::string&);
     static bool compare(std::filesystem::directory_entry const&, std::filesystem::directory_entry const&);
 public:
-    explicit Logger(const std::string&, const std::string&, std::uintmax_t size = 1000);    //First argument is a name of service for
+    Logger(const std::string&, const std::string&, std::uintmax_t size = 1000);    //First argument is a name of service for
                 //logging, second is a path to log files dir, third is a max size for log file, if we reach that size, create a new file
-    explicit Logger(const char* service, const char* log_dir, std::uintmax_t size = 1000): Logger(std::string(service), std::string(log_dir), size) { }   //First argument
+    Logger(const char* service, const char* log_dir, std::uintmax_t size = 1000): Logger(std::string(service), std::string(log_dir), size) { }   //First argument
                 //is a name of service for logging, second is a path to log files dir, third is a max size for log file, if we reach that size, create a new file
     Logger(const Logger&) = delete;
     Logger(Logger&) = delete;
