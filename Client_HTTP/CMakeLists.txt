@@ -25,4 +25,4 @@ target_include_directories(${PROJECT_NAME} PUBLIC ./include)
 include_directories(${Parser_INC})
 
 add_library(Parser STATIC ${Parser_SRC}/parser.cpp ${Parser_INC}/parser.h)
-target_link_libraries(${PROJECT_NAME} PRIVATE Parser)
+target_link_libraries(${PROJECT_NAME} PRIVATE /usr/lib/x86_64-linux-gnu/libboost_coroutine.so.1.74.0 Parser)
