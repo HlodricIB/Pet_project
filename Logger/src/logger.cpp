@@ -109,3 +109,12 @@ void Logger::make_record(const std::string& event)
     auto now_time_t = std::chrono::system_clock::to_time_t(now);
     f_stream << std::put_time(std::localtime(&now_time_t), "%c \t") << event << "\n" << std::flush;
 }
+
+void Logger_srvr_http::make_record(const std::string& event)
+{
+    auto now = std::chrono::system_clock::now();
+    auto now_time_t = std::chrono::system_clock::to_time_t(now);
+    boost::asio::post(_strand, [now_time_t, event, &f_stream = f_stream] () {
+        f_stream << std::put_time(std::localtime(&now_time_t), "%c \t") << event << "\n" << std::flush;
+    });
+}

@@ -9,6 +9,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <mutex>
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/string_body.hpp>
@@ -26,6 +27,9 @@
 #include <boost/beast/http/file_body.hpp>
 #include "parser.h"
 #include "logger.h"
+
+
+#include <iostream>
 
 namespace server_http
 {
@@ -61,11 +65,9 @@ class Find_file
 {
 private:
     std::filesystem::path files_path;
-    std::string_view filename;
 public:
     explicit Find_file(const char* files_path_): files_path(files_path_) { };
     bool find(b_b::string_view&);
-    std::string full_path() { return std::string(files_path /= filename); }
 };
 
 //Forward declarations for Srvr_hlpr_clss
@@ -87,13 +89,22 @@ private:
     std::shared_ptr<Find_file> find_file{nullptr};
     std::shared_ptr<Handle_request> handle_request{nullptr};
 public:
-    explicit Srvr_hlpr_clss(std::shared_ptr<Parser>);
+    Srvr_hlpr_clss() { }
+    explicit Srvr_hlpr_clss(std::shared_ptr<Parser>, bool, bool, bool, bool, bool);   //bool arguments are telling
+                                                                    //wether appropriate class have to be constructed or not
+    void set_parser(std::shared_ptr<Parser> shrd_ptr) { parser = shrd_ptr; }
+    void set_logger(std::shared_ptr<Logger> shrd_ptr) { logger = shrd_ptr; }
+    void set_if_fail(std::shared_ptr<If_fail> shrd_ptr) { if_fail = shrd_ptr; }
+    void set_mime_type(std::shared_ptr<Mime_types> shrd_ptr) { mime_type = shrd_ptr; }
+    void set_find_file(std::shared_ptr<Find_file> shrd_ptr) { find_file = shrd_ptr; }
+    void set_handle_request(std::shared_ptr<Handle_request> shrd_ptr) { handle_request = shrd_ptr; }
 };
 
 class If_fail
 {
 private:
     std::shared_ptr<Logger> logger{nullptr};
+    mutable std::mutex m;
 public:
     If_fail() { }
     explicit If_fail(std::shared_ptr<Srvr_hlpr_clss> s_h_c): logger(s_h_c->logger) { }
@@ -181,7 +192,7 @@ public:
         };
         auto target = req.target();
         //Make sure we can handle the method
-        if (req.method() != b_b_http::verb::get || req.method() != b_b_http::verb::head)
+        if (req.method() != b_b_http::verb::get && req.method() != b_b_http::verb::head)
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
         }
@@ -214,13 +225,13 @@ public:
             }
             }
         }
-        //Now we can be sure, that we have a request fo song, so make sure that requested filename is legal
+        //Now we can be sure, that we have a request for song, so make sure that requested filename is legal
         if (target[0] == '/' || target.find("..") != b_b::string_view::npos)
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Illegal request-target"));
         }
         //Handle the case where the file doesn't exist
-        if (!find_file->find(target))
+        if (!find_file->find(target))   //After that target contains full path to target file
         {
             std::string body_content = "File " + std::string(target.data(), target.size()) + " not found";
             return sender(string_body_res(b_b_http::status::not_found, body_content));
@@ -228,8 +239,7 @@ public:
         //Attempt to open the file
         boost::system::error_code ec;
         b_b_http::file_body::value_type body;
-        auto full_path = find_file->full_path();
-        body.open(full_path.c_str(), b_b::file_mode::scan, ec);
+        body.open(target.c_str(), b_b::file_mode::scan, ec);
         //Handle an unknown error
         if (ec)
         {
@@ -256,6 +266,7 @@ public:
             res.set(b_b_http::field::content_type, mime_type->mime_type(target));
             res.content_length(size);
             res.keep_alive(req.keep_alive());
+            return sender(std::move(res));
             break;
         }
         default:

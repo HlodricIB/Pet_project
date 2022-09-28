@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <system_error>
 #include <boost/asio/basic_socket_acceptor.hpp>
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/beast/http/write.hpp>
@@ -47,36 +48,65 @@ bool Find_file::find(b_b::string_view& target)
     } else {
         compare = [target] (b_b::string_view curr_file)->bool { return curr_file == target; };
     }
-    b_b::string_view curr_file;
-    for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
+    std::error_code ec;
+    bool _is_directory = std::filesystem::is_directory(files_path, ec);
+    if (ec)
     {
-        if (dir_entry.is_regular_file())
+        std::cerr << "Unable to check if given path to files dir is directory: " << ec.message() << std::endl;
+        return false;
+    }
+    if (_is_directory)
+    {
+        b_b::string_view curr_file;
+        for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
         {
-            curr_file = dir_entry.path().filename().c_str();
-            if (compare(curr_file))
+            if (dir_entry.is_regular_file())
             {
-                std::string_view temp(curr_file.data(), curr_file.size());
-                filename.swap(temp);
-                return true;
+                curr_file = dir_entry.path().filename().c_str();
+                if (compare(curr_file))
+                {
+                    std::filesystem::path temp{curr_file.data(), curr_file.data() + curr_file.size()};
+                    target = (files_path /= temp).string();
+                    return true;
+                }
             }
         }
+    } else {
+        std::cerr << "Given path to files dir is not a directory" << std::endl;
     }
-    target = "Target file not found";
     return false;
 }
 
-Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_): parser(parser_)
+Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger, bool bool_if_fail,
+                               bool bool_mime_type, bool bool_find_file, bool bool_handle_request): parser(parser_)
 {
-    logger = std::make_shared<Logger>(parser->parsed_info_ptr()[SERVER_NAME], parser->parsed_info_ptr()[LOGS_FOLDER],
-                                      std::strtoumax((parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]), nullptr, 10));
-    if (!logger->whether_started())
+    if (bool_logger)
     {
-        logger.reset();
+        logger = std::make_shared<Logger>(parser->parsed_info_ptr()[SERVER_NAME],
+                                                    parser->parsed_info_ptr()[LOGS_FOLDER],
+                                                    std::strtoumax((parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]), nullptr, 10));
+        if (!logger->whether_started())
+        {
+            logger.reset();
+        }
     }
-    if_fail = std::make_shared<If_fail>(logger);
-    mime_type = std::make_shared<Audio_mime_type>();
-    find_file = std::make_shared<Find_file>(parser_->parsed_info_ptr()[FILES_FOLDER]);
-    handle_request = std::make_shared<Handle_request>(mime_type, find_file, if_fail, parser_->parsed_info_ptr()[SERVER_NAME]);
+    if (bool_if_fail)
+    {
+        if_fail = std::make_shared<If_fail>(logger);
+    }
+    if (bool_mime_type)
+    {
+        mime_type = std::make_shared<Audio_mime_type>();
+    }
+    if (bool_find_file)
+    {
+        find_file = std::make_shared<Find_file>(parser_->parsed_info_ptr()[FILES_FOLDER]);
+    }
+    if (bool_handle_request)
+    {
+        handle_request = std::make_shared<Handle_request>(mime_type, find_file, if_fail,
+                                                          parser->parsed_info_ptr()[SERVER_NAME]);
+    }
 }
 
 void If_fail::fail_report(boost::system::error_code ec, const char* reason) const
@@ -86,6 +116,7 @@ void If_fail::fail_report(boost::system::error_code ec, const char* reason) cons
     {
         logger->make_record(message);
     }
+    std::lock_guard<std::mutex> lock(m);
     std::cerr << message << std::endl;
 }
 
@@ -93,6 +124,20 @@ Server_HTTP::Server_HTTP(std::shared_ptr<Srvr_hlpr_clss> s_h_c_): s_h_c(s_h_c_),
     num_threads{std::max<int>(1, std::min<int>(std::thread::hardware_concurrency(), std::atoi(s_h_c->parser->parsed_info_ptr()[NUM_THREADS])))},
     ioc{num_threads}
 {
+    //For now on we have created io_context object, so we may complete our Srvr_hlpr_clss
+    auto& parser = s_h_c->parser;
+    std::shared_ptr<Logger> logger = std::make_shared<Logger_srvr_http>(ioc, parser->parsed_info_ptr()[SERVER_NAME],
+                                                                        parser->parsed_info_ptr()[LOGS_FOLDER],
+                                                                        std::strtoumax((parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]),
+                                                                                       nullptr, 10));
+    if (!logger->whether_started())
+    {
+        logger.reset();
+    }
+    s_h_c->set_logger(logger);
+    s_h_c->set_if_fail(std::make_shared<If_fail>(logger));
+    s_h_c->set_handle_request(std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->find_file, s_h_c->if_fail,
+                                                               s_h_c->parser->parsed_info_ptr()[SERVER_NAME]));
     if (s_h_c->logger)
     {
         std::string rec = s_h_c->parser->parsed_info_ptr()[SERVER_NAME] + std::string{" starting..."};
@@ -162,7 +207,6 @@ Listener::Listener(b_a::io_context& ioc_, std::shared_ptr<Srvr_hlpr_clss> s_h_c_
     {
         if_fail->fail_report(ec, "Failed to set the maximum length of the queue of pending incoming connections: ");
     }
-    //std::string message =
     s_h_c->logger->make_record(std::string("Server " + std::string(parser->parsed_info_ptr()[SERVER_NAME]) + " starts listening port "
 + std::string(parser->parsed_info_ptr()[PORT]) + " with IP-address: " + std::string(parser->parsed_info_ptr()[ADDRESS])));
 }
@@ -175,16 +219,18 @@ void Listener::accepting_loop(boost::system::error_code ec)
     {
         for (;;)
         {
+            std::cout << "Before async_accept" << std::endl;
             yield _acceptor.async_accept(_socket, b_b::bind_front_handler(&Listener::accepting_loop, shared_from_this()));
+            std::cout << "AFTER async_accept" << std::endl;
+            if (ec)
+            {
+                if_fail->fail_report(ec, "Failed to accept: ");
+            } else {
+                std::make_shared<Session>(std::move(_socket), s_h_c)->run();
+            }
+            //Make sure each session gets its own strand
+            _socket = b_a_i_t::socket(b_a::make_strand(ioc));
         }
-        if (ec)
-        {
-            if_fail->fail_report(ec, "Failed to accept: ");
-        } else {
-            std::make_shared<Session>(std::move(_socket), s_h_c)->run();
-        }
-        //Make sure each session gets its own strand
-        _socket = b_a_i_t::socket(b_a::make_strand(ioc));
     }
 #include <boost/asio/unyield.hpp>
 }
@@ -213,15 +259,15 @@ void Session::run()
 void Session::session_loop(bool close, boost::system::error_code ec, size_t bytes_transferred)
 {
     boost::ignore_unused(bytes_transferred);
-    static auto send_lambda = [this] (auto msg) mutable
+    auto send_lambda = [this] (auto msg) mutable
     {
         auto res_sp = std::make_shared<decltype(msg)>(std::move(msg));
         this->_res_sp = res_sp;
         b_b_http::async_write(this->_stream, *res_sp, b_b::bind_front_handler(&Session::session_loop, this->shared_from_this(),
                                                                               res_sp->need_eof()));
     };
-    auto if_fail = s_h_c->if_fail;
-    auto handle_request = s_h_c->handle_request;
+    static auto if_fail = s_h_c->if_fail;
+    static auto handle_request = s_h_c->handle_request;
 #include <boost/asio/yield.hpp>
     reenter(*this)
     {
@@ -230,7 +276,7 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             //Make the request empty before reading, otherwise the operation behavior is undefined
             req = { };
             //Set the timeout
-            _stream.expires_after(std::chrono::minutes(5));
+            _stream.expires_after(std::chrono::minutes(1));
             yield b_b_http::async_read(_stream, _buffer, req, b_b::bind_front_handler(&Session::session_loop, shared_from_this(), false));
             if (ec == b_b_http::error::end_of_stream)
             {
@@ -241,13 +287,13 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             if (ec)
             {
                 if_fail->fail_report(ec, "Error while reading message: ");
-                return;
+                break;
             }
             yield handle_request->handle(std::move(req), send_lambda);
             if (ec)
             {
                 if_fail->fail_report(ec, "Error while writing response: ");
-                return;
+                break;
             }
             if (close)
             {
@@ -257,14 +303,14 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             //We're done with the response so delete it
             _res_sp = nullptr;
         }
-        //Send a TCP shutdown
-        _stream.socket().shutdown(b_a_i_t::socket::shutdown_send, ec);
+        if (ec != b_b::error::timeout)
+        {
+            //Send a TCP shutdown
+            _stream.socket().shutdown(b_a_i_t::socket::shutdown_send, ec);
+        }
     }
 #include <boost/asio/unyield.hpp>
 }
-
-
-
 }   //namespace server_http
 
 
