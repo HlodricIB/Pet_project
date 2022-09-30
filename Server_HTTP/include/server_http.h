@@ -65,9 +65,13 @@ class Find_file
 {
 private:
     std::filesystem::path files_path;
+    bool check_res{false};
+    void check_dir();
 public:
-    explicit Find_file(const char* files_path_): files_path(files_path_) { };
-    bool find(b_b::string_view&);
+    explicit Find_file(const char* files_path_): files_path(files_path_) { check_dir(); };
+    bool find(std::string&);
+    bool is_dir() const { return check_res; }
+    bool set_path(const char*);
 };
 
 //Forward declarations for Srvr_hlpr_clss
@@ -225,36 +229,45 @@ public:
             }
             }
         }
-        //Now we can be sure, that we have a request for song, so make sure that requested filename is legal
+        //Now we can be sure, that we have a request for file, so make sure that requested filename is legal
         if (target[0] == '/' || target.find("..") != b_b::string_view::npos)
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Illegal request-target"));
         }
+        //Make new std::string object to hold data between calls to find_file->find(std::string&)
+        std::string _target{target.data(), target.size()};
         //Handle the case where the file doesn't exist
-        if (!find_file->find(target))   //After that target contains full path to target file
+        if (!find_file->find(_target))   //After that, if file with _target filename was found, _target contains full path to target file
         {
             std::string body_content = "File " + std::string(target.data(), target.size()) + " not found";
             return sender(string_body_res(b_b_http::status::not_found, body_content));
         }
+        //Store full path to target file into b_b::string_view for mime_type determining and other purposes
+        target = _target;
         //Attempt to open the file
         boost::system::error_code ec;
         b_b_http::file_body::value_type body;
-        body.open(target.c_str(), b_b::file_mode::scan, ec);
+        body.open(_target.c_str(), b_b::file_mode::scan, ec);
         //Handle an unknown error
         if (ec)
         {
             return sender(string_body_res(b_b_http::status::internal_server_error, ec.message()));
         }
+        //Store body size since we need it after the move
         auto const size = body.size();
+        //Lambda to fill response on request for file
+        auto res_fill = [this, &size, &req, &target] (auto& res) {
+            res.set(b_b_http::field::server, server_name);
+            res.set(b_b_http::field::content_type, mime_type->mime_type(target));
+            res.content_length(size);
+            res.keep_alive(req.keep_alive());
+        };
         switch (req.method())
         {
         case b_b_http::verb::head:
         {
             b_b_http::response<b_b_http::empty_body> res{b_b_http::status::ok, req.version()};
-            res.set(b_b_http::field::server, server_name);
-            res.set(b_b_http::field::content_type, mime_type->mime_type(target));
-            res.content_length(size);
-            res.keep_alive(req.keep_alive());
+            res_fill(res);
             return sender(std::move(res));
             break;
         }
@@ -262,10 +275,7 @@ public:
         {
             b_b_http::response<b_b_http::file_body> res{std::piecewise_construct,
                         std::make_tuple(std::move(body)), std::make_tuple(b_b_http::status::ok, req.version())};
-            res.set(b_b_http::field::server, server_name);
-            res.set(b_b_http::field::content_type, mime_type->mime_type(target));
-            res.content_length(size);
-            res.keep_alive(req.keep_alive());
+            res_fill(res);
             return sender(std::move(res));
             break;
         }
@@ -286,6 +296,8 @@ private:
     b_b_http::request<b_b_http::string_body> req;
     b_b::flat_buffer _buffer;
     std::shared_ptr<void> _res_sp{nullptr};    //For managing the message to extent it's lifetime for the duration of the async operation
+    b_a::ip::address remote_address;
+    port_type remote_port;
     void session_loop(bool, boost::system::error_code, size_t);
 
 public:

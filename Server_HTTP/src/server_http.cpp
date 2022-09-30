@@ -27,8 +27,30 @@ b_b::string_view Audio_mime_type::mime_type(b_b::string_view target)
     return "application/octet-stream";
 }
 
-bool Find_file::find(b_b::string_view& target)
+void Find_file::check_dir()
 {
+    std::error_code ec;
+    std::string_view msg;
+    bool _is_directory = std::filesystem::is_directory(files_path, ec);
+    if (ec || !_is_directory)
+    {
+        if (ec)
+        {
+            msg = "Unable to check if given path to files dir is directory: " + ec.message();
+        } else {
+            msg = "Given path to files dir is not a directory";
+        }
+        std::cerr << msg << std::endl;
+        files_path.clear();
+        check_res = false;
+        return;
+    }
+    check_res = true;
+}
+
+bool Find_file::find(std::string& target_)
+{
+    b_b::string_view target{target_};
     if (target.size() == 0 || target.back() == '/' || target.find("..") != std::string_view::npos)
     {
         target = "Illegal target filename";
@@ -38,43 +60,39 @@ bool Find_file::find(b_b::string_view& target)
     if (target.back() == '*')
     {
         target.remove_suffix(1);
-        compare = [&target] (b_b::string_view curr_file) mutable {
+        compare = [&target, &target_] (b_b::string_view curr_file) mutable {
             if (curr_file.starts_with(target))
             {
-                target = curr_file;
+                target_ = std::string(curr_file.data(), curr_file.size());
                 return true;
             }
             return false; };
     } else {
         compare = [target] (b_b::string_view curr_file)->bool { return curr_file == target; };
     }
-    std::error_code ec;
-    bool _is_directory = std::filesystem::is_directory(files_path, ec);
-    if (ec)
+    b_b::string_view curr_file;
+    for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
     {
-        std::cerr << "Unable to check if given path to files dir is directory: " << ec.message() << std::endl;
-        return false;
-    }
-    if (_is_directory)
-    {
-        b_b::string_view curr_file;
-        for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
+        if (dir_entry.is_regular_file())
         {
-            if (dir_entry.is_regular_file())
+            curr_file = dir_entry.path().filename().c_str();
+            if (compare(curr_file))
             {
-                curr_file = dir_entry.path().filename().c_str();
-                if (compare(curr_file))
-                {
-                    std::filesystem::path temp{curr_file.data(), curr_file.data() + curr_file.size()};
-                    target = (files_path /= temp).string();
-                    return true;
-                }
+                std::filesystem::path temp_filename{curr_file.data(), curr_file.data() + curr_file.size()};
+                auto temp_files_path = files_path;
+                target_ = (temp_files_path /= temp_filename).string();
+                return true;
             }
         }
-    } else {
-        std::cerr << "Given path to files dir is not a directory" << std::endl;
     }
     return false;
+}
+
+bool Find_file::set_path(const char* files_path_)
+{
+    files_path = files_path_;
+    check_dir();
+    return check_res;
 }
 
 Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger, bool bool_if_fail,
@@ -101,6 +119,10 @@ Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger
     if (bool_find_file)
     {
         find_file = std::make_shared<Find_file>(parser_->parsed_info_ptr()[FILES_FOLDER]);
+        if (!find_file->is_dir())
+        {
+            return;
+        }
     }
     if (bool_handle_request)
     {
@@ -243,8 +265,8 @@ Session::Session(b_a_i_t::socket&& socket_, std::shared_ptr<Srvr_hlpr_clss> s_h_
     {
         s_h_c->if_fail->fail_report(ec, "Failed to get remote endpoint: ");
     } else {
-        auto remote_address = remote_endpoint.address();
-        auto remote_port = remote_endpoint.port();
+        remote_address = remote_endpoint.address();
+        remote_port = remote_endpoint.port();
         s_h_c->logger->make_record("Connected to IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port));
     }
 }
@@ -268,6 +290,8 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
     };
     static auto if_fail = s_h_c->if_fail;
     static auto handle_request = s_h_c->handle_request;
+    //For sending messages to fail_report
+    std::string msg;
 #include <boost/asio/yield.hpp>
     reenter(*this)
     {
@@ -280,19 +304,25 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             yield b_b_http::async_read(_stream, _buffer, req, b_b::bind_front_handler(&Session::session_loop, shared_from_this(), false));
             if (ec == b_b_http::error::end_of_stream)
             {
-                if_fail->fail_report(ec, "The remote host closed the connection: ");
+                msg = "The remote host with IP-address: " + remote_address.to_string() + ", port: "
+                                    + std::to_string(remote_port) + " closed the connection: ";
+                if_fail->fail_report(ec, msg.c_str());
                 break;
 
             }
             if (ec)
             {
-                if_fail->fail_report(ec, "Error while reading message: ");
+                msg = "Error while reading message from remote host with IP-address: " + remote_address.to_string() + ", port: "
+                                    + std::to_string(remote_port) + " : ";
+                if_fail->fail_report(ec, msg.c_str());
                 break;
             }
             yield handle_request->handle(std::move(req), send_lambda);
             if (ec)
             {
-                if_fail->fail_report(ec, "Error while writing response: ");
+                msg = "Error while writing response to remote host with IP-address: " + remote_address.to_string() + ", port: "
+                                    + std::to_string(remote_port) + " : ";
+                if_fail->fail_report(ec, msg.c_str());
                 break;
             }
             if (close)
@@ -305,8 +335,21 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
         }
         if (ec != b_b::error::timeout)
         {
+            msg = "Closing connection with IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port) + " : ";
+            s_h_c->logger->make_record("Closing connection with IP-address: " + remote_address.to_string() + ", port: "
+                                        + std::to_string(remote_port) + " : ");
             //Send a TCP shutdown
             _stream.socket().shutdown(b_a_i_t::socket::shutdown_send, ec);
+            if (ec)
+            {
+                msg = "Error while closing connection with IP-address: " + remote_address.to_string() + ", port: "
+                                    + std::to_string(remote_port) + " : ";
+                if_fail->fail_report(ec, msg.c_str());
+                break;
+            }
+        } else {
+            s_h_c->logger->make_record("Connection with IP-address: " + remote_address.to_string() + ", port: "
+                                        + std::to_string(remote_port) + " closed due to timeout");
         }
     }
 #include <boost/asio/unyield.hpp>

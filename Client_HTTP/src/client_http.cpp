@@ -4,6 +4,7 @@
 #include <string>
 #include <cctype>
 #include <sstream>
+#include <type_traits>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/dispatch.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
@@ -13,6 +14,7 @@
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/http/dynamic_body.hpp>
+#include <boost/beast/http/file_body.hpp>
 #include "client_http.h"
 
 namespace client_http
@@ -154,6 +156,12 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         }
         //Write the message to standard out
         std::cout << res << std::endl;
+        auto b = res.body();
+        bool is = std::is_same<decltype(b), b_b_http::dynamic_body::value_type>::value;
+        if (is)
+        {
+            std::cout << "File!" << std::endl;
+        }
     }
     if (ec != b_b::error::timeout)
     {
