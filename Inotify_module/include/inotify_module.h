@@ -25,7 +25,7 @@ private:
     int fd{-1}; //File descriptor corresponding to the initialized instance of inotify
     int wd{-1}; //Watch descriptor corresponding to the initialized instance of inotify
     std::thread watching_thread;
-    std::shared_ptr<Handler> handler{0};
+    std::shared_ptr<Handler> handler{nullptr};
     bool create_dir_if_not_exist();
     void create_inotify();
     void watching();
@@ -48,7 +48,7 @@ public:
     void start_watching() { watching_thread = std::thread([this] () { this->watching(); }); }
     void stop_watching() { done = true; }
     void set_folder(std::string, bool);   //To set folder to watch for, second argument is to show create logger or not
-    void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //To set events handler
+    void set_handler(std::shared_ptr<Handler>); //To set events handler
     void refresh_file_list() const;
 };
 

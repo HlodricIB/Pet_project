@@ -34,7 +34,6 @@ int main()
         Inotify_module_shrd_ptr->if_no_error(err);
         std::cout << err << std::endl;
     }
-
     char c;
     std::cin.get(c);
     return 0;

@@ -115,8 +115,9 @@ public:
 class Parser_Client_HTTP : public Parser
 {
 private:
-    constexpr static int expected_count{5};
-    constexpr static const char* expected[expected_count]{"host(address)", "port(service)", "client_name", "version", "num_threads"};
+    constexpr static int expected_count{6};
+    constexpr static const char* expected[expected_count]{"host(address)", "port(service)", "client_name", "version", "num_threads",
+    "download_dir"};
     void constructing_massives(const prop_tree::ptree&);
 public:
     Parser_Client_HTTP() { };

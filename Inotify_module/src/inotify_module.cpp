@@ -151,6 +151,21 @@ void Inotify_module::set_folder(std::string folder, bool add_logger)
         }
     }
     create_inotify();
+    if (auto ptr = std::dynamic_pointer_cast<Inotify_DB_handler>(handler))
+    {
+        ptr->set_files_folder(files_folder);
+    }
+}
+
+void Inotify_module::set_handler(std::shared_ptr<Handler> handler_)
+{
+    if (auto ptr = std::dynamic_pointer_cast<Inotify_DB_handler>(handler_))
+    {
+        handler = handler_;
+        ptr->set_files_folder(files_folder);
+    } else {
+        std::cerr << "Handler type is not valid" << std::endl;
+    }
 }
 
 void Inotify_module::refresh_file_list() const

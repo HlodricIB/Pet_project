@@ -4,35 +4,16 @@
 #include <string>
 #include <cctype>
 #include <sstream>
-#include <type_traits>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/dispatch.hpp>
 #include <boost/beast/core/tcp_stream.hpp>
-#include <boost/beast/http/message.hpp>
-#include <boost/beast/http/string_body.hpp>
 #include <boost/beast/http/write.hpp>
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/http/dynamic_body.hpp>
-#include <boost/beast/http/file_body.hpp>
 #include "client_http.h"
 
 namespace client_http
 {
-void Client_HTTP::Messaging::synch_cout(const std::string_view message)
-{
-    std::lock_guard<std::mutex> lock(m_cout);
-    std::cout << message << std::flush;
-}
-
-std::string Client_HTTP::Messaging::synch_cin()
-{
-    static std::string target;
-    std::lock_guard<std::mutex> lock(m_cin);
-    std::getline(std::cin, target);
-    return target;
-}
-
 Client_HTTP::Client_HTTP(std::shared_ptr<Parser> parser):
     num_threads{std::max<int>(1, std::min<int>(std::thread::hardware_concurrency(), std::atoi(parser->parsed_info_ptr()[NUM_THREADS])))},
     ioc{num_threads},
@@ -41,8 +22,10 @@ Client_HTTP::Client_HTTP(std::shared_ptr<Parser> parser):
 {
     std::string_view h_a{parser->parsed_info_ptr()[HOST_ADDRESS]};
     std::string_view p_s{parser->parsed_info_ptr()[PORT_SERVICE]};
+    std::string_view d_d{parser->parsed_info_ptr()[DOWNLOAD_DIR]};
     parse(h_a, host_address);
     parse(p_s, port_service);
+    parse(d_d, download_dirs);
     const char* _version = parser->parsed_info_ptr()[VERSION];
     version = (std::strcmp(_version, "\0") || !std::strcmp(_version, "1.0")) ? 10 : 11;
 }
@@ -92,7 +75,6 @@ void Client_HTTP::run()
 void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_context yield)
 {
     using b_a_i_t = b_a::ip::tcp;
-    namespace b_b_http = b_b::http;
     b_a_i_t::resolver resolver(ioc);
     b_b::tcp_stream stream(ioc);
     boost::system::error_code ec;
@@ -115,15 +97,16 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         return fail_report(ec, reason.c_str());
     }
     std::stringstream message;
-    std::string target;
+    std::string target(1, '/');
+    // Path to download dir
+    const std::filesystem::path path_to_dwnld_dir = download_dirs[i];
     for (;;)
     {
         //Rewind
         message.seekp(0);
         message << "Enter target for request (\":q\" to close connection): (" << std::this_thread::get_id() << ")\n";
-        msgng.synch_cout(message.view());
-        target = msgng.synch_cin();
-        if (target == ":q")
+        target.append(msgng.synch_cin(message.view(), true));
+        if (target == "/:q")
         {
             break;
         }
@@ -144,24 +127,53 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         }
         //This buffer is used for reading and must be persisted
         b_b::flat_buffer buffer;
-        //Declare a container to hold the response
-        b_b_http::response<b_b_http::dynamic_body> res;
-        b_b_http::async_read(stream, buffer, res, yield[ec]);
+        //Start with an empty_body parser
+        b_b_http::response_parser<b_b_http::empty_body> res0;
+        //Read just the header. Otherwise, the empty_body would generate an error if body octets were received
+        b_b_http::async_read_header(stream, buffer, res0, yield[ec]);
         if (ec)
         {
-            std::string reason = "Error while receiving response from resolved IP address with given host_address: "
+            std::string reason = "Error while receiving header of response from resolved IP address with given host_address: "
 + host_address[i] + ", port_service: " + port_service[i] + ", ";
             fail_report(ec, reason.c_str());
             break;
         }
-        //Write the message to standard out
-        std::cout << res << std::endl;
-        auto b = res.body();
-        bool is = std::is_same<decltype(b), b_b_http::dynamic_body::value_type>::value;
-        if (is)
+        //Choose a body for whole response
+        //Get the parsed header of response message
+        auto res0_msg = res0.get();
+        //Store contens of content_type field of response header
+        auto c_t_field = res0_msg[b_b_http::field::content_type];
+        if ((res0_msg[b_b_http::field::content_disposition]).empty() &&
+                (c_t_field == "text/html" || c_t_field == "text/plain"))
         {
-            std::cout << "File!" << std::endl;
+            b_b_http::response_parser<b_b_http::string_body> res{std::move(res0)};
+            b_b_http::async_read(stream, buffer,res, yield[ec]);
+            if (ec)
+            {
+                std::string reason = "Error while receiving whole response from resolved IP address with given host_address: "
+    + host_address[i] + ", port_service: " + port_service[i] + ", ";
+                fail_report(ec, reason.c_str());
+                break;
+            }
+            //Write the message to standard out
+            msgng.synch_cout(res.release());
+        } else  //Here we have file to load
+        {
+            b_b_http::response_parser<b_b_http::file_body> res{std::move(res0)};
+            set_params_file_body_parser(res, path_to_dwnld_dir);
+            b_b_http::async_read(stream, buffer,res, yield[ec]);
+            if (ec)
+            {
+                std::string reason = "Error while receiving whole response with file from resolved IP address with given host_address: "
+    + host_address[i] + ", port_service: " + port_service[i] + ", ";
+                fail_report(ec, reason.c_str());
+                break;
+            }
+            //Write the message header to standard out
+            msgng.synch_cout(res.get().base());
         }
+        target.resize(0);   //Clearing prevoius target
+        target.push_back('/');
     }
     if (ec != b_b::error::timeout)
     {
@@ -176,5 +188,33 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         }
     }
     //If we get here then the connection is closed gracefully
+}
+
+void Client_HTTP::set_params_file_body_parser(b_b_http::response_parser<b_b_http::file_body>& res,
+                                              const std::filesystem::path& path_to_dwnld_dir)
+{
+    boost::system::error_code ec;
+    static std::filesystem::path path_to_file;
+    //Store contens of content_disposition field of response
+    auto c_d_field = res.get()[b_b_http::field::content_disposition];
+    std::string filename;
+    if (c_d_field.empty())
+    {
+        filename = msgng.synch_cin("Enter name for file to save: ", true);
+    } else {
+        c_d_field.remove_suffix(1);
+        auto begin = c_d_field.find_last_of('/');
+        auto end = c_d_field.find_last_of('\"');
+        filename = c_d_field.substr(begin + 1, end).to_string();
+    }
+    path_to_file = path_to_dwnld_dir / filename;
+    res.get().body().open(path_to_file.c_str(), b_b::file_mode::write, ec);
+    //Establish limit size for file_body
+    if (auto body_lim = res.content_length_remaining())
+    {
+        res.body_limit(body_lim);
+    } else {
+        res.body_limit(std::numeric_limits<std::uint64_t>::max());
+    }
 }
 }   //namespace client_http

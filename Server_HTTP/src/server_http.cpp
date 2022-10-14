@@ -27,79 +27,12 @@ b_b::string_view Audio_mime_type::mime_type(b_b::string_view target)
     return "application/octet-stream";
 }
 
-void Find_file::check_dir()
-{
-    std::error_code ec;
-    std::string_view msg;
-    bool _is_directory = std::filesystem::is_directory(files_path, ec);
-    if (ec || !_is_directory)
-    {
-        if (ec)
-        {
-            msg = "Unable to check if given path to files dir is directory: " + ec.message();
-        } else {
-            msg = "Given path to files dir is not a directory";
-        }
-        std::cerr << msg << std::endl;
-        files_path.clear();
-        check_res = false;
-        return;
-    }
-    check_res = true;
-}
-
-bool Find_file::find(std::string& target_)
-{
-    b_b::string_view target{target_};
-    if (target.size() == 0 || target.back() == '/' || target.find("..") != std::string_view::npos)
-    {
-        target = "Illegal target filename";
-        return false;
-    }
-    static std::function<bool(b_b::string_view)> compare;
-    if (target.back() == '*')
-    {
-        target.remove_suffix(1);
-        compare = [&target, &target_] (b_b::string_view curr_file) mutable {
-            if (curr_file.starts_with(target))
-            {
-                target_ = std::string(curr_file.data(), curr_file.size());
-                return true;
-            }
-            return false; };
-    } else {
-        compare = [target] (b_b::string_view curr_file)->bool { return curr_file == target; };
-    }
-    b_b::string_view curr_file;
-    for (auto const& dir_entry : std::filesystem::directory_iterator{files_path})
-    {
-        if (dir_entry.is_regular_file())
-        {
-            curr_file = dir_entry.path().filename().c_str();
-            if (compare(curr_file))
-            {
-                std::filesystem::path temp_filename{curr_file.data(), curr_file.data() + curr_file.size()};
-                auto temp_files_path = files_path;
-                target_ = (temp_files_path /= temp_filename).string();
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool Find_file::set_path(const char* files_path_)
-{
-    files_path = files_path_;
-    check_dir();
-    return check_res;
-}
-
 Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger, bool bool_if_fail,
-                               bool bool_mime_type, bool bool_find_file, bool bool_handle_request): parser(parser_)
+                               bool bool_mime_type, bool bool_handler, bool bool_handle_request): parser(parser_)
 {
     if (bool_logger)
     {
+        //Only for single-threaded Server_HTTP objects, this base logger is not thread-safe!
         logger = std::make_shared<Logger>(parser->parsed_info_ptr()[SERVER_NAME],
                                                     parser->parsed_info_ptr()[LOGS_FOLDER],
                                                     std::strtoumax((parser->parsed_info_ptr()[MAX_LOG_FILE_SIZE]), nullptr, 10));
@@ -110,25 +43,25 @@ Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger
     }
     if (bool_if_fail)
     {
+        //Only for single-threaded Server_HTTP objects, passed logger is not thread-safe!
         if_fail = std::make_shared<If_fail>(logger);
     }
     if (bool_mime_type)
     {
         mime_type = std::make_shared<Audio_mime_type>();
     }
-    if (bool_find_file)
+    if (bool_handler)
     {
-        find_file = std::make_shared<Find_file>(parser_->parsed_info_ptr()[FILES_FOLDER]);
-        if (!find_file->is_dir())
-        {
-            return;
-        }
+        //Only if you want handler that works directly with dir, in other cases should use set_handler function
+        handler = std::make_shared<Server_dir_handler>(parser_->parsed_info_ptr()[FILES_FOLDER]);
     }
     if (bool_handle_request)
     {
-        handle_request = std::make_shared<Handle_request>(mime_type, find_file, if_fail,
+        //Only for single-threaded Server_HTTP objects, passed if_fail is not thread-safe because of not thread-safe logger!
+        handle_request = std::make_shared<Handle_request>(mime_type, handler, if_fail,
                                                           parser->parsed_info_ptr()[SERVER_NAME]);
     }
+
 }
 
 void If_fail::fail_report(boost::system::error_code ec, const char* reason) const
@@ -158,7 +91,7 @@ Server_HTTP::Server_HTTP(std::shared_ptr<Srvr_hlpr_clss> s_h_c_): s_h_c(s_h_c_),
     }
     s_h_c->set_logger(logger);
     s_h_c->set_if_fail(std::make_shared<If_fail>(logger));
-    s_h_c->set_handle_request(std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->find_file, s_h_c->if_fail,
+    s_h_c->set_handle_request(std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->handler, s_h_c->if_fail,
                                                                s_h_c->parser->parsed_info_ptr()[SERVER_NAME]));
     if (s_h_c->logger)
     {
@@ -178,6 +111,11 @@ Server_HTTP::~Server_HTTP()
         {
             t.join();
         }
+    }
+    if (s_h_c->logger)
+    {
+        std::string rec = s_h_c->parser->parsed_info_ptr()[SERVER_NAME] + std::string{" stopping..."};
+        s_h_c->logger->make_record(rec);
     }
 }
 
@@ -290,6 +228,9 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
     };
     static auto if_fail = s_h_c->if_fail;
     static auto handle_request = s_h_c->handle_request;
+    //Setting remote ip_address and remote port for filling DB_module log table
+    handle_request->set_remote_address(remote_address);
+    handle_request->set_remote_port(remote_port);
     //For sending messages to fail_report
     std::string msg;
 #include <boost/asio/yield.hpp>

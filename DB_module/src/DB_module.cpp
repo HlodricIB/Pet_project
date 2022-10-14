@@ -250,38 +250,59 @@ void connection_pool::warm(const std::string& DB_name, const std::vector<std::st
 }
 
 //*******************************************PG_result*******************************************
+std::vector<std::string> PG_result::not_succeed{"PGRES_EMPTY_QUERY", "PGRES_BAD_RESPONSE", "PGRES_NONFATAL_ERROR", "PGRES_FATAL_ERROR"};
+
+PG_result::PG_result(PGresult* res, const std::string DB_name_): result(res), DB_name(DB_name_)
+{
+    ExecStatusType status = PQresultStatus(result);
+    std::string string_status{PQresStatus(status)};
+    auto succeed = std::find(not_succeed.begin(), not_succeed.end(), string_status);
+    if (succeed == not_succeed.end())
+    {
+        success = true;
+        nFields = PQnfields(result);
+        nTuples = PQntuples(result);
+    }
+}
+
 PG_result::~PG_result()
 {
     PQclear(result);
+}
+
+void PG_result::construct_assign(PG_result&& other)
+{
+    result = other.result;
+    other.result = nullptr;
+    success = std::move(other.success);
+    other.success = false;
+    DB_name = std::move(other.DB_name);
+    nFields = std::move(other.nFields);
+    nTuples = std::move(other.nTuples);
 }
 
 PG_result& PG_result::operator=(PG_result&& rhs)
 {
     if (this != &rhs)
     {
-        result = rhs.result;
-        rhs.result = nullptr;
+        construct_assign(std::move(rhs));
     }
     return *this;
 }
 
 PG_result::PG_result(PG_result&& other)
 {
-    result = other.result;
-    other.result = nullptr;
+    construct_assign(std::move(other));
 }
 
 void PG_result::display_exec_result()
 {
-    ExecStatusType res_status = PQresultStatus(result);
-    if (res_status == PGRES_TUPLES_OK && PQnfields(result) != 0)
+    if (success)
     {
-        int nFields = PQnfields(result);
         for (int i = 0; i != nFields; ++i)
             std::cout << PQfname(result, i) << '\t';
         std::cout << std::endl;
-        int l = PQntuples(result);
-        for (int i = 0; i < l; i++)
+        for (int i = 0; i < nTuples; i++)
         {
             {
                 for (int j = 0; j < nFields; j++)
@@ -292,23 +313,14 @@ void PG_result::display_exec_result()
     }
 }
 
-const std::string PG_result::res_status() const
+const std::string PG_result::res_error() const
 {
-    ExecStatusType status = PQresultStatus(result);
-    return std::string(PQresStatus(status));
+    return std::string(PQresultErrorMessage(result));
 }
 
 bool PG_result::res_succeed() const
 {
-    std::vector<std::string> not_succeed{"PGRES_EMPTY_QUERY", "PGRES_BAD_RESPONSE", "PGRES_NONFATAL_ERROR", "PGRES_FATAL_ERROR"};
-    auto result = std::find(not_succeed.begin(), not_succeed.end(), res_status());
-    if (result == not_succeed.end())
-    {
-        return true;
-    } else
-    {
-        return false;
-    }
+    return success;
 }
 
 

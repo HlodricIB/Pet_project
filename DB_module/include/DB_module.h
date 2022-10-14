@@ -89,17 +89,22 @@ public:
 class PG_result
 {
 private:
+    static std::vector<std::string> not_succeed;
     PGresult* result{nullptr};
     std::string DB_name;    //Database name from which the result was obtained
+    bool success{false};
+    int nFields{0};
+    int nTuples{0};
+    void construct_assign(PG_result&&);
 public:
     PG_result() { }
-    explicit PG_result(PGresult* res, const std::string DB_name_): result(res), DB_name(DB_name_) { }
+    PG_result(PGresult*, const std::string);
     PG_result(PG_result&&);
     PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
     const PGresult* get_result() const { return result; }
-    const std::string res_status() const;
+    const std::string res_error() const;
     bool res_succeed() const;
     const std::string& res_DB_name() const { return DB_name; }
 };

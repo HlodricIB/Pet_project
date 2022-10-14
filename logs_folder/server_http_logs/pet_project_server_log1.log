@@ -1,8 +1,0 @@
-Fri Sep 30 14:00:42 2022 	pet_project_server starting...
-Fri Sep 30 14:00:42 2022 	Server pet_project_server starts listening port 8080 with IP-address: 0.0.0.0
-Fri Sep 30 14:00:57 2022 	Connected to IP-address: 127.0.0.1, port: 37496
-Fri Sep 30 14:00:57 2022 	Connected to IP-address: 127.0.0.1, port: 50366
-Fri Sep 30 14:01:30 2022 	The remote host with IP-address: 127.0.0.1, port: 37496 closed the connection: end of stream
-Fri Sep 30 14:01:30 2022 	Closing connection with IP-address: 127.0.0.1, port: 37496 : 
-Fri Sep 30 14:01:32 2022 	The remote host with IP-address: 127.0.0.1, port: 50366 closed the connection: end of stream
-Fri Sep 30 14:01:32 2022 	Closing connection with IP-address: 127.0.0.1, port: 50366 : 

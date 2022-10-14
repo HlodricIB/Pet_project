@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 #include <mutex>
+#include <sstream>
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/string_body.hpp>
@@ -27,6 +28,7 @@
 #include <boost/beast/http/file_body.hpp>
 #include "parser.h"
 #include "logger.h"
+#include "handler.h"
 
 
 #include <iostream>
@@ -61,19 +63,6 @@ public:
     b_b::string_view mime_type(b_b::string_view) override;
 };
 
-class Find_file
-{
-private:
-    std::filesystem::path files_path;
-    bool check_res{false};
-    void check_dir();
-public:
-    explicit Find_file(const char* files_path_): files_path(files_path_) { check_dir(); };
-    bool find(std::string&);
-    bool is_dir() const { return check_res; }
-    bool set_path(const char*);
-};
-
 //Forward declarations for Srvr_hlpr_clss
 class If_fail;
 class Handle_request;
@@ -90,7 +79,7 @@ private:
     std::shared_ptr<Logger> logger{nullptr};
     std::shared_ptr<If_fail> if_fail{nullptr};
     std::shared_ptr<Mime_types> mime_type{nullptr};
-    std::shared_ptr<Find_file> find_file{nullptr};
+    std::shared_ptr<Handler> handler{nullptr};
     std::shared_ptr<Handle_request> handle_request{nullptr};
 public:
     Srvr_hlpr_clss() { }
@@ -100,8 +89,8 @@ public:
     void set_logger(std::shared_ptr<Logger> shrd_ptr) { logger = shrd_ptr; }
     void set_if_fail(std::shared_ptr<If_fail> shrd_ptr) { if_fail = shrd_ptr; }
     void set_mime_type(std::shared_ptr<Mime_types> shrd_ptr) { mime_type = shrd_ptr; }
-    void set_find_file(std::shared_ptr<Find_file> shrd_ptr) { find_file = shrd_ptr; }
     void set_handle_request(std::shared_ptr<Handle_request> shrd_ptr) { handle_request = shrd_ptr; }
+    void set_handler(std::shared_ptr<Handler> shrd_ptr) { handler = shrd_ptr; }
 };
 
 class If_fail
@@ -173,12 +162,15 @@ class Handle_request
 {
 private:
     std::shared_ptr<Mime_types> mime_type{nullptr};
-    std::shared_ptr<Find_file> find_file{nullptr};
+    std::shared_ptr<Handler> handler{nullptr};
     std::shared_ptr<If_fail> if_fail{nullptr};
     b_b::string_view server_name;
+    b_a::ip::address remote_address;
+    port_type remote_port;
 public:
-    Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Find_file> find_file_, std::shared_ptr<If_fail> if_fail_, b_b::string_view server_name_):
-        mime_type(mime_type_), find_file(find_file_), if_fail(if_fail_), server_name(server_name_) { }
+    Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Handler> handler_, std::shared_ptr<If_fail> if_fail_,
+                   b_b::string_view server_name_):
+        mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_) { }
     template<class Body, class Allocator, class Sender>
     void
     handle(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender& sender)
@@ -188,30 +180,38 @@ public:
         {
             b_b_http::response<b_b_http::string_body> res{status, req.version()};
             res.set(b_b_http::field::server, server_name);
-            res.set(b_b_http::field::content_type, "text/html");
+            res.set(b_b_http::field::content_type, "text/plain");
             res.keep_alive(req.keep_alive());
             res.body() = body_content;
             res.prepare_payload();
             return res;
         };
-        auto target = req.target();
+        auto method = req.method();
         //Make sure we can handle the method
-        if (req.method() != b_b_http::verb::get && req.method() != b_b_http::verb::head)
+        if (method != b_b_http::verb::get && method != b_b_http::verb::head)
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
         }
-        //Check if we have a request for songs list
-        if (target.empty() || (target.size() == 1 && target[0] == '/'))
+        //Forming vector to pass to Handler object, this vector shall hold the result of handling
+        std::vector<std::string> target_body_info;
+        target_body_info.reserve(7);    //First element is requested target, second - host, third - port, fourth - ip
+                                        //fifth - method, sixth - is for storing result of handling by Handler,
+                                        //seventh - is for stroring possible error message
+        handler_vector_fill(req, target_body_info);
+        auto if_file = handler->handle(target_body_info);   //Returning bool value shows if we have request for file (true) or
+                                                            //request for something else  (false)
+        //Check if we have a request for files list
+        if (!if_file)
         {
-            std::string_view songs_list_body{"Here have to be a songs list"};
+            std::string_view songs_list_body{target_body_info[1]};
             auto body_size = songs_list_body.size();
-            switch (req.method())
+            switch (method)
             {
             case b_b_http::verb::head:
             {
                 b_b_http::response<b_b_http::empty_body> res{b_b_http::status::ok, req.version()};
                 res.set(b_b_http::field::server, server_name);
-                res.set(b_b_http::field::content_type, "text/html");
+                res.set(b_b_http::field::content_type, "text/plain");
                 res.content_length(body_size);
                 res.keep_alive(req.keep_alive());
                 return sender(std::move(res));
@@ -224,67 +224,95 @@ public:
             }
             default:
             {
+                return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method\n"));
+                break;
+            }
+            }
+        } else {
+            //Now we can be sure, that we have a request for file
+            if (target_body_info[5].empty())
+            {
+                // Something wrong, sending back appropriate response
+                auto& what_is_wrong = target_body_info[6];
+                if (what_is_wrong == "Illegal request-target\n")
+                {
+                    return sender(string_body_res(b_b_http::status::bad_request, what_is_wrong));
+                } else {
+                    //If we are here, then file doesn't exist
+                    return sender(string_body_res(b_b_http::status::not_found, what_is_wrong));
+                }
+            }
+            //Attempt to open the file
+            boost::system::error_code ec;
+            b_b_http::file_body::value_type body;
+            body.open(target_body_info[5].c_str(), b_b::file_mode::scan, ec);
+            //Handle an unknown error
+            if (ec)
+            {
+                return sender(string_body_res(b_b_http::status::internal_server_error, ec.message()));
+            }
+            //Store body size since we need it after the move
+            auto const size = body.size();
+            //Store full path to target file into b_b::string_view for mime_type determining and other purposes
+            b_b::string_view target = target_body_info[0];
+            //Lambda to fill response on request for file
+            auto res_fill = [this, &size, &req, &target] (auto& res) {
+                std::stringstream c_d_field;
+                c_d_field << "attachment; filename=\"" << target << "\"";
+                res.set(b_b_http::field::server, server_name);
+                res.set(b_b_http::field::content_type, mime_type->mime_type(target));
+                res.set(b_b_http::field::content_disposition, c_d_field.str());
+                res.content_length(size);
+                res.keep_alive(req.keep_alive());
+            };
+            switch (method)
+            {
+            case b_b_http::verb::head:
+            {
+                b_b_http::response<b_b_http::empty_body> res{b_b_http::status::ok, req.version()};
+                res_fill(res);
+                return sender(std::move(res));
+                break;
+            }
+            case b_b_http::verb::get:
+            {
+                b_b_http::response<b_b_http::file_body> res{std::piecewise_construct,
+                            std::make_tuple(std::move(body)), std::make_tuple(b_b_http::status::ok, req.version())};
+                res_fill(res);
+                return sender(std::move(res));
+                break;
+            }
+            default:
+            {
                 return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
                 break;
             }
             }
         }
-        //Now we can be sure, that we have a request for file, so make sure that requested filename is legal
-        if (target[0] == '/' || target.find("..") != b_b::string_view::npos)
+    }
+    void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //Method for changing handler
+    void set_remote_address(b_a::ip::address remote_address_) { remote_address = remote_address_; }
+    void set_remote_port(port_type remote_port_) { remote_port = remote_port_; }
+    template<class Body, class Allocator, class Sender>
+    void
+    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& target_body_info)    //Method to fill std::vector<std::string> for handler
+    {
+        //First element of target_body_info is requested target, second - host, third - port, fourth - ip, fifth - method,
+        //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
+        auto target = req.target();
+        target.remove_prefix(1);
+        target_body_info.emplace(target_body_info.begin(), target.data(), target.size()); //Store target from request
+
+        auto host = req.find(b_b_http::field::host);
+        if (host != req.end())
         {
-            return sender(string_body_res(b_b_http::status::bad_request, "Illegal request-target"));
+            target_body_info.emplace_back(*host);
+        } else {
+            target_body_info.emplace_back();
         }
-        //Make new std::string object to hold data between calls to find_file->find(std::string&)
-        std::string _target{target.data(), target.size()};
-        //Handle the case where the file doesn't exist
-        if (!find_file->find(_target))   //After that, if file with _target filename was found, _target contains full path to target file
-        {
-            std::string body_content = "File " + std::string(target.data(), target.size()) + " not found";
-            return sender(string_body_res(b_b_http::status::not_found, body_content));
-        }
-        //Store full path to target file into b_b::string_view for mime_type determining and other purposes
-        target = _target;
-        //Attempt to open the file
-        boost::system::error_code ec;
-        b_b_http::file_body::value_type body;
-        body.open(_target.c_str(), b_b::file_mode::scan, ec);
-        //Handle an unknown error
-        if (ec)
-        {
-            return sender(string_body_res(b_b_http::status::internal_server_error, ec.message()));
-        }
-        //Store body size since we need it after the move
-        auto const size = body.size();
-        //Lambda to fill response on request for file
-        auto res_fill = [this, &size, &req, &target] (auto& res) {
-            res.set(b_b_http::field::server, server_name);
-            res.set(b_b_http::field::content_type, mime_type->mime_type(target));
-            res.content_length(size);
-            res.keep_alive(req.keep_alive());
-        };
-        switch (req.method())
-        {
-        case b_b_http::verb::head:
-        {
-            b_b_http::response<b_b_http::empty_body> res{b_b_http::status::ok, req.version()};
-            res_fill(res);
-            return sender(std::move(res));
-            break;
-        }
-        case b_b_http::verb::get:
-        {
-            b_b_http::response<b_b_http::file_body> res{std::piecewise_construct,
-                        std::make_tuple(std::move(body)), std::make_tuple(b_b_http::status::ok, req.version())};
-            res_fill(res);
-            return sender(std::move(res));
-            break;
-        }
-        default:
-        {
-            return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
-            break;
-        }
-        }
+        target_body_info.emplace_back(remote_address.to_string());
+        target_body_info.emplace_back(std::to_string(remote_port));
+        target_body_info.emplace_back(req.method_string());
     }
 };
 
@@ -299,7 +327,6 @@ private:
     b_a::ip::address remote_address;
     port_type remote_port;
     void session_loop(bool, boost::system::error_code, size_t);
-
 public:
     Session(b_a_i_t::socket&&, std::shared_ptr<Srvr_hlpr_clss>);
     Session(const Session&) = delete;
