@@ -106,7 +106,7 @@ public:
 };
 
 //An order of char* returned by Parser
-enum
+enum : size_t
 {
     ADDRESS,
     PORT,
@@ -158,6 +158,18 @@ public:
     void run() { accepting_loop(); };
 };
 
+//An order of parameters in req_info
+enum
+{
+    REQ_TARGET,
+    REQ_HOST,
+    REQ_PORT,
+    REQ_IP_ADDRESS,
+    REQ_METHOD,
+    REQ_RESULT,
+    REQ_ERROR
+};
+
 class Handle_request
 {
 private:
@@ -167,10 +179,25 @@ private:
     b_b::string_view server_name;
     b_a::ip::address remote_address;
     port_type remote_port;
+    std::vector<std::string> req_info;  //Vector to pass to Handler object, this vector shall hold the result of handling
+                                        //First element is requested target, second - host, third - port, fourth - ip
+                                        //fifth - method, sixth - is for storing result of handling by Handler,
+                                        //seventh - is for stroring possible error message
 public:
     Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Handler> handler_, std::shared_ptr<If_fail> if_fail_,
                    b_b::string_view server_name_):
-        mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_) { }
+        mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_)
+    {
+        req_info.reserve(7);
+        req_info.emplace_back("");
+        req_info.emplace_back("");
+        req_info.emplace_back(std::to_string(remote_port));
+        req_info.emplace_back(remote_address.to_string());
+        for (std::vector<std::string>::size_type i = 4; i != req_info.size(); ++i)
+        {
+            req_info.emplace_back("");
+        }
+    }
     template<class Body, class Allocator, class Sender>
     void
     handle(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>&& req, Sender& sender)
@@ -192,18 +219,13 @@ public:
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
         }
-        //Forming vector to pass to Handler object, this vector shall hold the result of handling
-        std::vector<std::string> target_body_info;
-        target_body_info.reserve(7);    //First element is requested target, second - host, third - port, fourth - ip
-                                        //fifth - method, sixth - is for storing result of handling by Handler,
-                                        //seventh - is for stroring possible error message
-        handler_vector_fill(req, target_body_info);
-        auto if_file = handler->handle(target_body_info);   //Returning bool value shows if we have request for file (true) or
-                                                            //request for something else  (false)
+        handler_vector_fill(req, req_info);
+        auto if_file = handler->handle(req_info);   //Returning bool value shows if we have request for file (true) or
+                                                    //request for something else (false)
         //Check if we have a request for files list
         if (!if_file)
         {
-            std::string_view songs_list_body{target_body_info[1]};
+            std::string_view songs_list_body{req_info[REQ_RESULT]};
             auto body_size = songs_list_body.size();
             switch (method)
             {
@@ -230,10 +252,10 @@ public:
             }
         } else {
             //Now we can be sure, that we have a request for file
-            if (target_body_info[5].empty())
+            if (req_info[REQ_RESULT].empty())
             {
                 // Something wrong, sending back appropriate response
-                auto& what_is_wrong = target_body_info[6];
+                auto& what_is_wrong = req_info[REQ_ERROR];
                 if (what_is_wrong == "Illegal request-target\n")
                 {
                     return sender(string_body_res(b_b_http::status::bad_request, what_is_wrong));
@@ -245,7 +267,7 @@ public:
             //Attempt to open the file
             boost::system::error_code ec;
             b_b_http::file_body::value_type body;
-            body.open(target_body_info[5].c_str(), b_b::file_mode::scan, ec);
+            body.open(req_info[REQ_RESULT].c_str(), b_b::file_mode::scan, ec);
             //Handle an unknown error
             if (ec)
             {
@@ -254,7 +276,7 @@ public:
             //Store body size since we need it after the move
             auto const size = body.size();
             //Store full path to target file into b_b::string_view for mime_type determining and other purposes
-            b_b::string_view target = target_body_info[0];
+            b_b::string_view target = req_info[REQ_TARGET];
             //Lambda to fill response on request for file
             auto res_fill = [this, &size, &req, &target] (auto& res) {
                 std::stringstream c_d_field;
@@ -295,24 +317,24 @@ public:
     void set_remote_port(port_type remote_port_) { remote_port = remote_port_; }
     template<class Body, class Allocator, class Sender>
     void
-    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& target_body_info)    //Method to fill std::vector<std::string> for handler
+    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& req_info)    //Method to fill std::vector<std::string> for handler
     {
         //First element of target_body_info is requested target, second - host, third - port, fourth - ip, fifth - method,
         //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
+        req_info[REQ_TARGET].resize(0);
+        req_info[REQ_HOST].resize(0);
+        req_info[REQ_METHOD].resize(0);
+        req_info[REQ_RESULT].resize(0);
+        req_info[REQ_ERROR].resize(0);
         auto target = req.target();
         target.remove_prefix(1);
-        target_body_info.emplace(target_body_info.begin(), target.data(), target.size()); //Store target from request
-
+        req_info[REQ_TARGET] = std::string(target.data(), target.size()); //Store target from request
         auto host = req.find(b_b_http::field::host);
         if (host != req.end())
         {
-            target_body_info.emplace_back(*host);
-        } else {
-            target_body_info.emplace_back();
+             req_info[REQ_HOST] = *host;
         }
-        target_body_info.emplace_back(remote_address.to_string());
-        target_body_info.emplace_back(std::to_string(remote_port));
-        target_body_info.emplace_back(req.method_string());
+        req_info[REQ_METHOD] = req.method_string();
     }
 };
 

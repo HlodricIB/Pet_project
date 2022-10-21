@@ -97,13 +97,17 @@ private:
     int nTuples{0};
     void construct_assign(PG_result&&);
 public:
+    using result_container = std::vector<std::vector<std::pair<const char*, size_t>>>;
     PG_result() { }
     PG_result(PGresult*, const std::string);
     PG_result(PG_result&&);
     PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
-    const PGresult* get_result() const { return result; }
+    const PGresult* get_result_ptr() const { return result; }
+    result_container get_result_container() const;
+    int get_columns_number() const { return nFields; }
+    int get_rows_number() const { return nTuples; }
     const std::string res_error() const;
     bool res_succeed() const;
     const std::string& res_DB_name() const { return DB_name; }

@@ -1,5 +1,6 @@
 #include <functional>
-#include <boost/beast/core/string_type.hpp>
+#include <algorithm>
+//#include <boost/beast/core/string_type.hpp>
 #include "handler.h"
 
 bool Inotify_DB_handler::handle(std::vector<std::string>& arguments)
@@ -10,7 +11,7 @@ bool Inotify_DB_handler::handle(std::vector<std::string>& arguments)
         size_t uid = std::hash<std::string>{}(arguments[1]);
         command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
                 "INSERT INTO song_table (id, song_name, song_uid, song_URL) VALUES (DEFAULT, "
-                + arguments[1] + ", " + std::to_string(uid) + ", " + '\'' + files_folder + '\'' + "); COMMIT";
+                + arguments[1] + ", " + '\'' + std::to_string(uid) + '\'' + ", " + '\'' + files_folder + '\'' + "); COMMIT";
         exec_command(command);
         return true;
     }
@@ -67,26 +68,164 @@ void Inotify_DB_handler::exec_command(const std::string& command)
     return;
 }
 
-std::string Server_HTTP_handler::update_log_table(std::vector<std::string>& target_body_info)
+//An order of parameters in req_info
+enum : size_t
 {
-    auto& target = target_body_info[0];
-    auto& host =  target_body_info[1];
-    auto& port =  target_body_info[2];
-    auto& ip_address =  target_body_info[3];
-    auto& method =  target_body_info[4];
+    REQ_TARGET,
+    REQ_HOST,
+    REQ_PORT,
+    REQ_IP_ADDRESS,
+    REQ_METHOD,
+    REQ_RESULT,
+    REQ_ERROR
+};
+
+void Server_HTTP_handler::update_log_table(std::vector<std::string>& req_info)
+{
+    static std::string command;
+    command = "BEGIN; LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; "
+                "INSERT INTO log_table (id, host, port, ip, rest_method, target, req_date_time) VALUES"
+                "(DEFAULT, \'" +
+                req_info[REQ_HOST] + "\', \'" +
+                req_info[REQ_PORT] + "\'::serial, \'" +
+                req_info[REQ_IP_ADDRESS] + "\'::inet, \'" +
+                req_info[REQ_METHOD] + "\', \'" +
+                req_info[REQ_TARGET] + "\', \'" +
+                "LOCALTIMESTAMP" +
+                "); COMMIT";
+    auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
+                                                             //task_deque of appropriate thread pool that works with DB_module
+    auto res = future_res.get();
+    if (!res->res_succeed())
+    {
+        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR] += std::string("Database " + res->res_DB_name() + " error while updating log table: " + res->res_error() + '\n');
+    }
 }
 
-bool Server_HTTP_handler::handle(std::vector<std::string>& target_body_info)    //First element is requested target, second - host, third - port, fourth - ip
-                                                                                //fifth - method, sixth - is for storing result of handling by Handler,
-                                                                                //seventh - is for stroring possible error message
+void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info)
 {
-    auto& target = target_body_info[0];
-    auto error_msg = update_log_table(target_body_info);
+    static std::string command{"BEGIN; LOCK TABLE song_table IN SHARE MODE; SELECT id, song_name, song_uid FROM song_table; COMMIT"};
+    auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
+                                                             //task_deque of appropriate thread pool that works with DB_module
+    auto res = future_res.get();
+    if (!res->res_succeed())
+    {
+        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming files table: " + res->res_error() + '\n'));
+        return;
+    }
+    if (res->get_columns_number() == 0)
+    {
+        req_info[REQ_RESULT] = "No files available at that moment\n";
+        return;
+    }
+    result_container res_cntnr(res->get_result_container());
+    forming_tables_helper(req_info, res_cntnr);
+}
+
+void Server_HTTP_handler::forming_log_table(std::vector<std::string>& req_info)
+{
+    static std::string command{"BEGIN; LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table; COMMIT"};
+    auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
+                                                             //task_deque of appropriate thread pool that works with DB_module
+    auto res = future_res.get();
+    if (!res->res_succeed())
+    {
+        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming log table: " + res->res_error() + '\n'));
+        return;
+    }
+    result_container res_cntnr(res->get_result_container());
+    forming_tables_helper(req_info, res_cntnr);
+}
+
+void Server_HTTP_handler::forming_tables_helper(std::vector<std::string>& req_info, result_container& res_cntnr)
+{
+    //Determining maximum length of strings in every column exclude last column (for formatted table sending)
+    auto n_columns = res_cntnr[0].size() - 1;  //-1 here is because of we don't need to take into account
+                                               //lenght of rows in the last column that would be sent in response
+    std::vector<size_t> vec_max_len(n_columns, 0); //
+    for (inner_result_container::size_type i = 0; i != n_columns; ++i)
+    {
+        for (result_container::size_type j = 0; j != res_cntnr.size(); ++j)
+        {
+            vec_max_len[i] = std::max<size_t>(vec_max_len[i], res_cntnr[j][i].second);
+        }
+    }
+    //Forming files table in std::string
+    ++n_columns;   //All columns must be present in the result string
+    for (result_container::size_type i = 0; i != res_cntnr.size(); ++i)
+    {
+        for (inner_result_container::size_type j = 0; j != n_columns; ++j)
+        {
+            req_info[REQ_RESULT] += res_cntnr[i][j].first + std::string(vec_max_len[j] - res_cntnr[i][j].second + 1, ' ');
+        }
+        req_info[REQ_RESULT].append(1, '\n');
+    }
+}
+
+void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
+{
+    auto& target = req_info[REQ_TARGET];
+    if (target.back() == '/' || target.find("..") != std::string::npos)
+    {
+        req_info[REQ_ERROR] = "Illegal request-target\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
+        return;
+    }
+
+    if (target.size() > 1 && target.back() == '*')
+    {
+        target.back() = '%';
+    }
+    static std::string command_name{"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO " + target + " LIMIT 1;"};
+    static std::string command_uid{"SELECT song_name, song_url FROM song_table WHERE song_uid SIMILAR TO " + target + " LIMIT 1;"};
+    auto future_res = DB_ptr->exec_command(command_name, false);  //Second argument (false) tells, that command must be queued in a
+                                                                       //task_deque of appropriate thread pool that works with DB_module
+
+    auto res = future_res.get();
+    if (!res->res_succeed())
+    {
+        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming log table: " + res->res_error() + '\n'));
+        return;
+    }
+    future_res = DB_ptr->exec_command(command_uid, false);
+    result_container res_cntnr(res->get_result_container());
+}
+
+//"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO 'rt%?' LIMIT 1;"
+
+bool Server_HTTP_handler::handle(std::vector<std::string>& req_info)    //Returning bool value shows if we have request for file (true) or
+                                                                        //request for something else (false)
+                                                                        //First element is requested target, second - host, third - port, fourth - ip
+                                                                        //fifth - method, sixth - is for storing result of handling by Handler,
+                                                                        //seventh - is for storing possible error message
+{
+    auto& target = req_info[REQ_TARGET];
+    update_log_table(req_info);
     //Check if we have a request for both, files and log tables
     if (target.empty() || (target.size() == 1 && target[0] == '/'))
     {
-
+        forming_files_table(req_info);
+        forming_log_table(req_info);
+        return false;
     }
+    //Check if we have a request for files table
+    if (target == "files_table" || target == "Files_table")
+    {
+        forming_files_table(req_info);
+        return false;
+    }
+    //Check if we have a request for logs table
+    if (target == "log_table" || target == "Log_table")
+    {
+        forming_files_table(req_info);
+        return false;
+    }
+    //If we are here, we have a request for file
+    get_file_URI(req_info);
+    return true;
 }
 
 void Server_dir_handler::check_dir()
@@ -110,13 +249,12 @@ void Server_dir_handler::check_dir()
     check_res = true;
 }
 
-void Server_dir_handler::find(std::vector<std::string>& target_body_info)
+void Server_dir_handler::find(std::vector<std::string>& req_info)
 {
-    auto& target = target_body_info[0];
+    auto& target = req_info[REQ_TARGET];
     if (target.back() == '/' || target.find("..") != std::string::npos)
     {
-        target_body_info.emplace_back();    //Fill target_body_info[5] element to fill target_body_info[6] element
-        target_body_info.emplace_back("Illegal request-target\n");  //Fill target_body_info[6] element (element for error)
+        req_info[REQ_ERROR] = "Illegal request-target\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
         return;
     }
     static std::function<bool(std::string_view)> compare;
@@ -143,13 +281,12 @@ void Server_dir_handler::find(std::vector<std::string>& target_body_info)
             {
                 std::filesystem::path temp_filename{curr_file};
                 auto temp_files_path = files_path;
-                target_body_info.emplace(target_body_info.begin() + 1, (temp_files_path /= temp_filename).string());
+                req_info[REQ_RESULT] = (temp_files_path /= temp_filename).string();
                 return;
             }
         }
     }
-    target_body_info.emplace_back();    //Fill target_body_info[5] element to fill target_body_info[6] element
-    target_body_info.emplace_back("File " + target + " not found\n");  //Fill target_body_info[6] element (element for error)
+    req_info[REQ_ERROR] = "File " + target + " not found\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
     return;
 }
 
@@ -164,7 +301,7 @@ std::vector<std::string>::size_type Server_dir_handler::number_of_digits(std::ve
     return number_of_digits;
 }
 
-std::string Server_dir_handler::forming_files_list()
+std::string Server_dir_handler::forming_files_table()
 {
     std::vector<std::string> file_names;    //Temporary container to store all file names in specified dir;
     std::string::size_type max_file_length = 0;
@@ -200,18 +337,18 @@ bool Server_dir_handler::set_path(const char* files_path_)
     return check_res;
 }
 
-bool Server_dir_handler::handle(std::vector<std::string>& target_body_info) //First element is requested target, second - host, third - port, fourth - ip
-                                                                            //fifth - method, sixth - is for storing result of handling by Handler,
-                                                                            //seventh - is for stroring possible error message
+bool Server_dir_handler::handle(std::vector<std::string>& req_info) //First element is requested target, second - host, third - port, fourth - ip
+                                                                    //fifth - method, sixth - is for storing result of handling by Handler,
+                                                                    //seventh - is for stroring possible error message
 {
-    auto& target = target_body_info[0];
-    //Check if we have a request for files list
-    if (target.empty() || (target.size() == 1 && target[0] == '/') || target == "files_list" || target == "Files_list")
+    auto& target = req_info[REQ_TARGET];
+    //Check if we have a request for files table
+    if (target.empty() || (target.size() == 1 && target[0] == '/') || target == "files_table" || target == "Files_table")
     {
-        target_body_info.emplace(target_body_info.begin() + 1, forming_files_list());
+        req_info[REQ_RESULT] = forming_files_table();
         return false;   //Shows that we have request for something else, but not the file
     } else {
-        find(target_body_info);
+        find(req_info);
         return true;    //Shows that we have request for file
     }
 }

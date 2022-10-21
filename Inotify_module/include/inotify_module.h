@@ -26,6 +26,7 @@ private:
     int wd{-1}; //Watch descriptor corresponding to the initialized instance of inotify
     std::thread watching_thread;
     std::shared_ptr<Handler> handler{nullptr};
+    std::vector<std::string> arguments{2, ""};
     bool create_dir_if_not_exist();
     void create_inotify();
     void watching();

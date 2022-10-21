@@ -28,12 +28,17 @@ public:
 
 class Server_HTTP_handler : public Handler
 {
+public:
+    using result_container = std::vector<std::vector<std::pair<const char*, size_t>>>;
+    using inner_result_container = std::vector<std::pair<const char*, size_t>>;
 private:
     std::shared_ptr<DB_module> DB_ptr{nullptr};
     void find(std::vector<std::string>&);
-    std::string forming_files_list();
-    std::string forming_log_list();
-    std::string update_log_table(std::vector<std::string>&); //Returnig std::string is for passing possible error messages
+    void forming_files_table(std::vector<std::string>&);
+    void forming_log_table(std::vector<std::string>&);
+    void forming_tables_helper(std::vector<std::string>&, result_container&);
+    void update_log_table(std::vector<std::string>&); //Returnig std::string is for passing possible error messages
+    void get_file_URI(std::vector<std::string>&);
 public:
     Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_): DB_ptr(DB_ptr_) { }
     virtual bool handle(std::vector<std::string>&) override;    //Returning bool value shows if we have request for file (true) or
@@ -50,7 +55,7 @@ private:
     bool check_res{false};
     void check_dir();
     void find(std::vector<std::string>&);
-    std::string forming_files_list();
+    std::string forming_files_table();
     std::vector<std::string>::size_type number_of_digits(std::vector<std::string>::size_type);
 public:
     Server_dir_handler(const char* files_path_): files_path(files_path_) { check_dir(); }

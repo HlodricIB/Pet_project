@@ -1,5 +1,6 @@
 #include <thread>
 #include <chrono>
+#include <cstring>
 #include "DB_module.h"
 
 //*******************************************DB_module*******************************************
@@ -311,6 +312,35 @@ void PG_result::display_exec_result()
         std::cout << std::endl;
         }
     }
+}
+
+PG_result::result_container PG_result::get_result_container() const
+{
+    using inner_result_container = std::vector<std::pair<const char*, size_t>>;
+    result_container outer_res_cntnr;
+    outer_res_cntnr.reserve(nTuples);
+    inner_result_container inner_res_cntnr;
+    inner_res_cntnr.reserve(nFields);
+    //Forming log table header
+    const char* ptr{nullptr};
+    for (inner_result_container::size_type i = 0; i != nFields; ++i)
+    {
+        ptr = PQfname(result, i);
+        inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::strlen(ptr)));
+    }
+    outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
+    //Forming log table content
+    for (result_container::size_type i = 0; i != nTuples; ++i)
+    {
+        inner_res_cntnr.reserve(nFields);
+        for (inner_result_container::size_type j = 0; j != nFields; ++j)
+        {
+            ptr = PQfname(result, i);
+            inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::strlen(ptr)));
+        }
+        outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
+    }
+    return outer_res_cntnr;
 }
 
 const std::string PG_result::res_error() const

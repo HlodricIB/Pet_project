@@ -237,6 +237,9 @@ void Inotify_module::read_handle_event(const int buf_size)
     }
     while (i < ret_read) //This loop is to handle all events
     {
+        //Clearing arguments vector to refill it with information about new event to handle to
+        arguments[0].resize(0);
+        arguments[1].resize(0);
         event = reinterpret_cast<struct inotify_event*>(&buf[i]);
         if (event->mask & IN_CREATE)
         {
@@ -244,51 +247,74 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file created"));
             }
-            handler->handle({"add", '\'' + std::string(event->name) + '\''});
-        }
-        if (event->mask & IN_DELETE)
-        {
-            if (logger)
+            arguments[0] = "add";
+            arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+            handler->handle(arguments);
+            //handler->handle({"add", '\'' + std::string(event->name) + '\''});
+        } else {
+            if (event->mask & IN_DELETE)
             {
-                logger->make_record(std::string(event->name) + std::string(" file deleted"));
+                if (logger)
+                {
+                    logger->make_record(std::string(event->name) + std::string(" file deleted"));
+                }
+                arguments[0] = "delete";
+                arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                handler->handle(arguments);
+                //handler->handle({"delete", '\'' + std::string(event->name) + '\''});
+            } else {
+                if (event->mask & IN_MOVED_FROM)
+                {
+                    if (logger)
+                    {
+                        logger->make_record(std::string(event->name) + std::string(" file moved from songs folder"));
+                    }
+                    arguments[0] = "delete";
+                    arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                    handler->handle(arguments);
+                    //handler->handle({"delete", '\'' + std::string(event->name) + '\''});
+                } else {
+                    if (event->mask & IN_MOVED_TO)
+                    {
+                        if (logger)
+                        {
+                            logger->make_record(std::string(event->name) + std::string(" file moved to songs folder"));
+                        }
+                        arguments[0] = "add";
+                        arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                        handler->handle(arguments);
+                        //handler->handle({"add", '\'' + std::string(event->name) + '\''});
+                    } else {
+                        if (event->mask & IN_DELETE_SELF)
+                        {
+                            if (logger)
+                            {
+                                logger->make_record(std::string("Songs folder was deleted"));
+                            }
+                            arguments[0] = "dir_del";
+                            arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                            handler->handle(arguments);
+                            //handler->handle({"dir_del"});
+                            files_folder.clear();
+                            done = true;
+                        } else {
+                            if (event->mask & IN_MOVE_SELF)
+                            {
+                                if (logger)
+                                {
+                                    logger->make_record(std::string("Songs folder was moved to another location"));
+                                }
+                                arguments[0] = "dir_del";
+                                arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                                handler->handle(arguments);
+                                //handler->handle({"dir_del"});
+                                files_folder.clear();
+                                done = true;
+                            }
+                        }
+                    }
+                }
             }
-            handler->handle({"delete", '\'' + std::string(event->name) + '\''});
-        }
-        if (event->mask & IN_MOVED_FROM)
-        {
-            if (logger)
-            {
-                logger->make_record(std::string(event->name) + std::string(" file moved from songs folder"));
-            }
-            handler->handle({"delete", '\'' + std::string(event->name) + '\''});
-        }
-        if (event->mask & IN_MOVED_TO)
-        {
-            if (logger)
-            {
-                logger->make_record(std::string(event->name) + std::string(" file moved to songs folder"));
-            }
-            handler->handle({"add", '\'' + std::string(event->name) + '\''});
-        }
-        if (event->mask & IN_DELETE_SELF)
-        {
-            if (logger)
-            {
-                logger->make_record(std::string("Songs folder was deleted"));
-            }
-            handler->handle({"dir_del"});
-            files_folder.clear();
-            done = true;
-        }
-        if (event->mask & IN_MOVE_SELF)
-        {
-            if (logger)
-            {
-                logger->make_record(std::string("Songs folder was moved to another location"));
-            }
-            handler->handle({"dir_del"});
-            files_folder.clear();
-            done = true;
         }
         i += (event_size + event->len);
     }

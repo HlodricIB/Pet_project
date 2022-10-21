@@ -12,6 +12,6 @@ CREATE TABLE log_table (
 	ip inet NOT NULL,
 	REST_method varchar NOT NULL,
 	target varchar NOT NULL,
-	req_date_time timestamp (0) with time zone NOT NULL	
+	req_date_time timestamp (0) without time zone NOT NULL	
 
 );
