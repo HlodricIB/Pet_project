@@ -106,6 +106,7 @@ public:
     void display_exec_result();
     const PGresult* get_result_ptr() const { return result; }
     result_container get_result_container() const;
+    int get_result_command_tag() const;
     int get_columns_number() const { return nFields; }
     int get_rows_number() const { return nTuples; }
     const std::string res_error() const;

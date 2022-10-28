@@ -105,7 +105,7 @@ public:
     void fail_report(boost::system::error_code, const char*) const;
 };
 
-//An order of char* returned by Parser
+//An order of char* returned by Parser_Server_HTTP
 enum : size_t
 {
     ADDRESS,
@@ -193,7 +193,7 @@ public:
         req_info.emplace_back("");
         req_info.emplace_back(std::to_string(remote_port));
         req_info.emplace_back(remote_address.to_string());
-        for (std::vector<std::string>::size_type i = 4; i != req_info.size(); ++i)
+        for (size_t i = REQ_IP_ADDRESS; i != REQ_ERROR; ++i)
         {
             req_info.emplace_back("");
         }
@@ -246,6 +246,9 @@ public:
             }
             default:
             {
+                std::string fail_message{"Unknown HTTP method in request from ip-address: " + remote_address.to_string()
+                                            + ", port: " + std::to_string(remote_port) + '\n'};
+                if_fail->fail_report({ }, fail_message.c_str());
                 return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method\n"));
                 break;
             }
@@ -256,12 +259,37 @@ public:
             {
                 // Something wrong, sending back appropriate response
                 auto& what_is_wrong = req_info[REQ_ERROR];
-                if (what_is_wrong == "Illegal request-target\n")
+                if (what_is_wrong.starts_with("Illegal request"))
                 {
+                    //If we are here, then we have illegal request-target
+                    std::string fail_message{"Illegal target in request from ip-address: " + remote_address.to_string()
+                                + ", port: " + std::to_string(remote_port) + '\n'};
+                    if_fail->fail_report({ }, fail_message.c_str());
                     return sender(string_body_res(b_b_http::status::bad_request, what_is_wrong));
                 } else {
-                    //If we are here, then file doesn't exist
-                    return sender(string_body_res(b_b_http::status::not_found, what_is_wrong));
+                    if (what_is_wrong.starts_with("Several"))
+                    {
+                        //If we are here, then several files match the request-target at once
+                        std::string fail_message{"Several files in request from ip-address: " + remote_address.to_string()
+                                                    + ", port: " + std::to_string(remote_port) + " match the target at once\n"};
+                        if_fail->fail_report({ }, fail_message.c_str());
+                        return sender(string_body_res(b_b_http::status::multiple_choices, what_is_wrong));
+                    } else {
+                        if (what_is_wrong.starts_with("Database"))
+                        {
+                            //If we are here, then we have some error with query to database
+                            std::string fail_message{"Error while querying database for target in request from ip-address: " + remote_address.to_string()
+                                                        + ", port: " + std::to_string(remote_port) + '\n'};
+                            if_fail->fail_report({ }, fail_message.c_str());
+                            return sender(string_body_res(b_b_http::status::internal_server_error, what_is_wrong));
+                        } else {
+                            //If we are here, then requested file doesn't exist
+                            std::string fail_message{"File requested from ip-address: " + remote_address.to_string()
+                                                        + ", port: " + std::to_string(remote_port) + " doesn't exist\n"};
+                            if_fail->fail_report({ }, fail_message.c_str());
+                            return sender(string_body_res(b_b_http::status::not_found, what_is_wrong));
+                        }
+                    }
                 }
             }
             //Attempt to open the file
@@ -315,9 +343,10 @@ public:
     void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //Method for changing handler
     void set_remote_address(b_a::ip::address remote_address_) { remote_address = remote_address_; }
     void set_remote_port(port_type remote_port_) { remote_port = remote_port_; }
-    template<class Body, class Allocator, class Sender>
+    template<class Body, class Allocator>
     void
-    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& req_info)    //Method to fill std::vector<std::string> for handler
+    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& req_info)    //Method
+                                                                                           //to fill std::vector<std::string> for handler
     {
         //First element of target_body_info is requested target, second - host, third - port, fourth - ip, fifth - method,
         //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
@@ -329,12 +358,10 @@ public:
         auto target = req.target();
         target.remove_prefix(1);
         req_info[REQ_TARGET] = std::string(target.data(), target.size()); //Store target from request
-        auto host = req.find(b_b_http::field::host);
-        if (host != req.end())
-        {
-             req_info[REQ_HOST] = *host;
-        }
-        req_info[REQ_METHOD] = req.method_string();
+        auto host = req[b_b_http::field::host];
+        req_info[REQ_HOST] = std::string(host.data(), host.size());
+        auto req_method = req.method_string();
+        req_info[REQ_METHOD] = std::string(req_method.data(), req_method.size());
     }
 };
 
@@ -358,6 +385,5 @@ public:
     void run();
 };
 }   //namespace server_http
-
 
 #endif // SERVER_HTTP_H

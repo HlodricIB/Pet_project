@@ -16,7 +16,8 @@ int main()
     auto t_pool_DB_shrd_ptr = std::make_shared<thread_pool>(6);
     auto t_pool_Handler_shrd_ptr = std::make_shared<thread_pool>(2);
     auto DB_module_shrd_ptr = std::make_shared<DB_module>(c_pool_shrd_ptr, t_pool_DB_shrd_ptr);
-    std::shared_ptr<Handler> handler_Inotify_DB_shrd_ptr = std::make_shared<Inotify_DB_handler>(DB_module_shrd_ptr, t_pool_Handler_shrd_ptr);
+    auto handler_Inotify_DB_shrd_ptr = std::make_shared<Inotify_DB_handler>(DB_module_shrd_ptr, t_pool_Handler_shrd_ptr);
+    using namespace inotify_module;
     auto Inotify_module_shrd_ptr = std::make_shared<Inotify_module>(parser_inotify_shrd_ptr);
     Inotify_module_shrd_ptr->set_handler(handler_Inotify_DB_shrd_ptr);
     Inotify_module_shrd_ptr->refresh_file_list();

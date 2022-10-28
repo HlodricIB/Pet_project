@@ -256,6 +256,15 @@ const char* const* Parser_DB::parsed_info_ptr(char m) const
     }
 }
 
+std::pair<bool, std::string_view> Parser_DB::validate_parsed()
+{
+    if (size_char_ptr_ptr > 0)
+    {
+        return std::make_pair(true, std::string_view());
+    }
+    return std::make_pair(true, std::string_view("No data was parsed, may be because there is no appropriate information to parse in ini-file"));
+}
+
 Parser_Inotify::Parser_Inotify(const prop_tree::ptree& config)
 {
     constructing_massives(config);

@@ -75,7 +75,7 @@ public:
     explicit Parser_DB(const Parser_DB&);
     //~Parser_DB() override { };
     const char* const* parsed_info_ptr(char m = 'k') const override;
-    std::pair<bool, std::string_view> validate_parsed() override { return std::make_pair(true, std::string_view()); }
+    std::pair<bool, std::string_view> validate_parsed() override;
 };
 
 class Parser_Inotify : public Parser

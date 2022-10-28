@@ -5,8 +5,11 @@
 #include <system_error>
 #include "inotify_module.h"
 
-Inotify_module::Inotify_module(const std::string& files_folder_, const std::string& logs_folder): files_folder(files_folder_)
+namespace inotify_module
 {
+Inotify_module::Inotify_module(const std::string& files_folder_, const std::string& logs_folder)
+{
+    arguments[FILES_FOLDER] = files_folder_;
     if (!create_dir_if_not_exist())
     {
         return;
@@ -20,8 +23,9 @@ Inotify_module::Inotify_module(const std::string& files_folder_, const std::stri
     create_inotify();
 }
 
-Inotify_module::Inotify_module(const std::string& files_folder_, std::unique_ptr<Logger> logger_): files_folder(files_folder_), logger(std::move(logger_))
+Inotify_module::Inotify_module(const std::string& files_folder_, std::unique_ptr<Logger> logger_): logger(std::move(logger_))
 {
+    arguments[FILES_FOLDER] = files_folder_;
     if (!logger->whether_started())
     {
         std::cerr << "Inotify logger didn't start, continue without logging" << std::endl;
@@ -65,7 +69,7 @@ void Inotify_module::create_inotify()
     if (fd != -1)
     {
         wd = inotify_add_watch(fd,
-                               files_folder.c_str(),
+                               arguments[FILES_FOLDER].c_str(),
                                IN_ONLYDIR | IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF);
         if (wd != -1)
         {
@@ -93,7 +97,7 @@ void Inotify_module::create_inotify()
 bool Inotify_module::create_dir_if_not_exist()
 {
     namespace fs = std::filesystem;
-    fs::path songs_folder_path{files_folder};
+    fs::path songs_folder_path{arguments[FILES_FOLDER]};
     if (fs::exists(songs_folder_path))
     {
         return true;
@@ -141,7 +145,7 @@ void Inotify_module::set_folder(std::string folder, bool add_logger)
     {
         return ;
     }
-    files_folder = folder;
+    arguments[FILES_FOLDER] = folder;
     if (add_logger)
     {
         logger = std::make_unique<Logger>("Inotify", folder.c_str());
@@ -151,21 +155,11 @@ void Inotify_module::set_folder(std::string folder, bool add_logger)
         }
     }
     create_inotify();
-    if (auto ptr = std::dynamic_pointer_cast<Inotify_DB_handler>(handler))
-    {
-        ptr->set_files_folder(files_folder);
-    }
 }
 
 void Inotify_module::set_handler(std::shared_ptr<Handler> handler_)
 {
-    if (auto ptr = std::dynamic_pointer_cast<Inotify_DB_handler>(handler_))
-    {
-        handler = handler_;
-        ptr->set_files_folder(files_folder);
-    } else {
-        std::cerr << "Handler type is not valid" << std::endl;
-    }
+    handler = handler_;
 }
 
 void Inotify_module::refresh_file_list() const
@@ -175,9 +169,9 @@ void Inotify_module::refresh_file_list() const
     {
         logger->make_record("Refreshing files list started");
     }
-    fs::path files_folder_path{files_folder};
+    fs::path files_folder_path{arguments[FILES_FOLDER]};
     std::error_code ec;
-    std::vector<std::string> files_list(1, "refresh");
+    std::vector<std::string> files_list{arguments[FILES_FOLDER], "refresh"};
     for (fs::directory_entry const& entry : fs::directory_iterator(files_folder_path))
     {
         if (entry.is_regular_file(ec) && (!ec))
@@ -185,11 +179,11 @@ void Inotify_module::refresh_file_list() const
             files_list.push_back('\'' + (entry.path()).filename().string() + '\'');
         }
     }
+    handler->handle(files_list);
     if(logger)
     {
         logger->make_record("Refreshing files list completed");
     }
-    handler->handle(files_list);
 }
 
 void Inotify_module::watching()
@@ -238,8 +232,8 @@ void Inotify_module::read_handle_event(const int buf_size)
     while (i < ret_read) //This loop is to handle all events
     {
         //Clearing arguments vector to refill it with information about new event to handle to
-        arguments[0].resize(0);
-        arguments[1].resize(0);
+        arguments[ARGS_EVENT].resize(0);
+        arguments[ARGS_ENTITY_NAME].resize(0);
         event = reinterpret_cast<struct inotify_event*>(&buf[i]);
         if (event->mask & IN_CREATE)
         {
@@ -247,8 +241,8 @@ void Inotify_module::read_handle_event(const int buf_size)
             {
                 logger->make_record(std::string(event->name) + std::string(" file created"));
             }
-            arguments[0] = "add";
-            arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+            arguments[ARGS_EVENT] = "add";
+            arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
             handler->handle(arguments);
             //handler->handle({"add", '\'' + std::string(event->name) + '\''});
         } else {
@@ -258,8 +252,8 @@ void Inotify_module::read_handle_event(const int buf_size)
                 {
                     logger->make_record(std::string(event->name) + std::string(" file deleted"));
                 }
-                arguments[0] = "delete";
-                arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                arguments[ARGS_EVENT] = "delete";
+                arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
                 handler->handle(arguments);
                 //handler->handle({"delete", '\'' + std::string(event->name) + '\''});
             } else {
@@ -269,8 +263,8 @@ void Inotify_module::read_handle_event(const int buf_size)
                     {
                         logger->make_record(std::string(event->name) + std::string(" file moved from songs folder"));
                     }
-                    arguments[0] = "delete";
-                    arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                    arguments[ARGS_EVENT] = "delete";
+                    arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
                     handler->handle(arguments);
                     //handler->handle({"delete", '\'' + std::string(event->name) + '\''});
                 } else {
@@ -280,8 +274,8 @@ void Inotify_module::read_handle_event(const int buf_size)
                         {
                             logger->make_record(std::string(event->name) + std::string(" file moved to songs folder"));
                         }
-                        arguments[0] = "add";
-                        arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                        arguments[ARGS_EVENT] = "add";
+                        arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
                         handler->handle(arguments);
                         //handler->handle({"add", '\'' + std::string(event->name) + '\''});
                     } else {
@@ -291,11 +285,11 @@ void Inotify_module::read_handle_event(const int buf_size)
                             {
                                 logger->make_record(std::string("Songs folder was deleted"));
                             }
-                            arguments[0] = "dir_del";
-                            arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                            arguments[ARGS_EVENT] = "dir_del";
+                            arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
                             handler->handle(arguments);
                             //handler->handle({"dir_del"});
-                            files_folder.clear();
+                            arguments[FILES_FOLDER].clear();
                             done = true;
                         } else {
                             if (event->mask & IN_MOVE_SELF)
@@ -304,11 +298,11 @@ void Inotify_module::read_handle_event(const int buf_size)
                                 {
                                     logger->make_record(std::string("Songs folder was moved to another location"));
                                 }
-                                arguments[0] = "dir_del";
-                                arguments[1] = std::string('\'' + std::string(event->name) + '\'');
+                                arguments[ARGS_EVENT] = "dir_del";
+                                arguments[ARGS_ENTITY_NAME] = std::string('\'' + std::string(event->name) + '\'');
                                 handler->handle(arguments);
                                 //handler->handle({"dir_del"});
-                                files_folder.clear();
+                                arguments[FILES_FOLDER].clear();
                                 done = true;
                             }
                         }
@@ -337,3 +331,4 @@ bool Inotify_module::if_no_error(std::string& error) const
     }
     return if_success;
 }
+}   //namespace inotify_module

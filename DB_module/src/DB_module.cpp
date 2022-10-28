@@ -1,6 +1,7 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
+#include <climits>
 #include "DB_module.h"
 
 //*******************************************DB_module*******************************************
@@ -323,10 +324,12 @@ PG_result::result_container PG_result::get_result_container() const
     inner_res_cntnr.reserve(nFields);
     //Forming log table header
     const char* ptr{nullptr};
+    std::size_t len{0};
     for (inner_result_container::size_type i = 0; i != nFields; ++i)
     {
         ptr = PQfname(result, i);
-        inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::strlen(ptr)));
+        len = std::strlen(ptr);
+        inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::move(len)));
     }
     outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
     //Forming log table content
@@ -335,12 +338,22 @@ PG_result::result_container PG_result::get_result_container() const
         inner_res_cntnr.reserve(nFields);
         for (inner_result_container::size_type j = 0; j != nFields; ++j)
         {
-            ptr = PQfname(result, i);
-            inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::strlen(ptr)));
+            ptr = PQgetvalue(result, i, j);
+            len = std::strlen(ptr);
+            inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::move(len)));
         }
         outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
     }
     return outer_res_cntnr;
+}
+
+int PG_result::get_result_command_tag() const
+{
+    if (nFields != 1 && nTuples != 1)
+    {
+        return -INT_MAX;
+    }
+    return std::atoi(PQgetvalue(result, 0, 0));
 }
 
 const std::string PG_result::res_error() const
