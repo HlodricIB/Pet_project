@@ -28,7 +28,7 @@ b_b::string_view Audio_mime_type::mime_type(b_b::string_view target)
 }
 
 Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger, bool bool_if_fail,
-                               bool bool_mime_type, bool bool_handler, bool bool_handle_request): parser(parser_)
+                               bool bool_mime_type, bool bool_handler): parser(parser_)
 {
     if (bool_logger)
     {
@@ -55,18 +55,17 @@ Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger
         //Only if you want handler that works directly with dir, in other cases should use set_handler function
         handler = std::make_shared<Server_dir_handler>(parser_->parsed_info_ptr()[FILES_FOLDER]);
     }
-    if (bool_handle_request)
-    {
-        //Only for single-threaded Server_HTTP objects, passed if_fail is not thread-safe because of not thread-safe logger!
-        handle_request = std::make_shared<Handle_request>(mime_type, handler, if_fail,
-                                                          parser->parsed_info_ptr()[SERVER_NAME]);
-    }
-
 }
 
 void If_fail::fail_report(boost::system::error_code ec, const char* reason) const
 {
-    std::string message = reason + ec.message();
+    static thread_local std::string message;
+    if (ec)
+    {
+        message = reason + ec.message();
+    } else {
+        message = reason;
+    }
     if (logger)
     {
         logger->make_record(message);
@@ -91,8 +90,6 @@ Server_HTTP::Server_HTTP(std::shared_ptr<Srvr_hlpr_clss> s_h_c_): s_h_c(s_h_c_),
     }
     s_h_c->set_logger(logger);
     s_h_c->set_if_fail(std::make_shared<If_fail>(logger));
-    s_h_c->set_handle_request(std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->handler, s_h_c->if_fail,
-                                                               s_h_c->parser->parsed_info_ptr()[SERVER_NAME]));
     if (s_h_c->logger)
     {
         std::string rec = s_h_c->parser->parsed_info_ptr()[SERVER_NAME] + std::string{" starting..."};
@@ -204,7 +201,7 @@ Session::Session(b_a_i_t::socket&& socket_, std::shared_ptr<Srvr_hlpr_clss> s_h_
         s_h_c->if_fail->fail_report(ec, "Failed to get remote endpoint: ");
     } else {
         remote_address = remote_endpoint.address();
-        remote_port = remote_endpoint.port();
+        remote_port = static_cast<port_type>(remote_endpoint.port());
         s_h_c->logger->make_record("Connected to IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port));
     }
 }
@@ -227,10 +224,8 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
                                                                               res_sp->need_eof()));
     };
     static auto if_fail = s_h_c->if_fail;
-    static auto handle_request = s_h_c->handle_request;
-    //Setting remote ip_address and remote port for filling DB_module log table
-    handle_request->set_remote_address(remote_address);
-    handle_request->set_remote_port(remote_port);
+    auto handle_request = std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->handler, s_h_c->if_fail,
+                                                           s_h_c->parser->parsed_info_ptr()[SERVER_NAME], remote_address, remote_port);
     //For sending messages to fail_report
     std::string msg;
 #include <boost/asio/yield.hpp>

@@ -65,7 +65,6 @@ public:
 
 //Forward declarations for Srvr_hlpr_clss
 class If_fail;
-class Handle_request;
 
 class Srvr_hlpr_clss
 {
@@ -73,24 +72,27 @@ class Srvr_hlpr_clss
     friend class Listener;
     friend class Session;
     friend class If_fail;
-    friend class Handle_request;
 private:
     std::shared_ptr<Parser> parser{nullptr};
     std::shared_ptr<Logger> logger{nullptr};
     std::shared_ptr<If_fail> if_fail{nullptr};
     std::shared_ptr<Mime_types> mime_type{nullptr};
     std::shared_ptr<Handler> handler{nullptr};
-    std::shared_ptr<Handle_request> handle_request{nullptr};
 public:
     Srvr_hlpr_clss() { }
-    explicit Srvr_hlpr_clss(std::shared_ptr<Parser>, bool, bool, bool, bool, bool);   //bool arguments are telling
+    explicit Srvr_hlpr_clss(std::shared_ptr<Parser>, bool, bool, bool, bool);   //bool arguments are telling
                                                                     //wether appropriate class have to be constructed or not
     void set_parser(std::shared_ptr<Parser> shrd_ptr) { parser = shrd_ptr; }
     void set_logger(std::shared_ptr<Logger> shrd_ptr) { logger = shrd_ptr; }
     void set_if_fail(std::shared_ptr<If_fail> shrd_ptr) { if_fail = shrd_ptr; }
     void set_mime_type(std::shared_ptr<Mime_types> shrd_ptr) { mime_type = shrd_ptr; }
-    void set_handle_request(std::shared_ptr<Handle_request> shrd_ptr) { handle_request = shrd_ptr; }
     void set_handler(std::shared_ptr<Handler> shrd_ptr) { handler = shrd_ptr; }
+    std::shared_ptr<Parser> get_parser() { return parser; }
+    std::shared_ptr<Logger> get_logger() { return logger; }
+    std::shared_ptr<If_fail> get_if_fail() { return if_fail; }
+    std::shared_ptr<Mime_types> get_mime_type() { return mime_type; }
+    std::shared_ptr<Handler> get_handler() { return handler; }
+
 };
 
 class If_fail
@@ -165,6 +167,7 @@ enum
     REQ_HOST,
     REQ_PORT,
     REQ_IP_ADDRESS,
+    REQ_USER_AGENT,
     REQ_METHOD,
     REQ_RESULT,
     REQ_ERROR
@@ -181,14 +184,14 @@ private:
     port_type remote_port;
     std::vector<std::string> req_info;  //Vector to pass to Handler object, this vector shall hold the result of handling
                                         //First element is requested target, second - host, third - port, fourth - ip
-                                        //fifth - method, sixth - is for storing result of handling by Handler,
-                                        //seventh - is for stroring possible error message
+                                        //fifth - user_agent, sixth - method, seventh - is for storing result of handling by Handler,
+                                        //eighth - is for stroring possible error message
 public:
     Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Handler> handler_, std::shared_ptr<If_fail> if_fail_,
-                   b_b::string_view server_name_):
-        mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_)
+                   b_b::string_view server_name_, b_a::ip::address remote_address_, port_type remote_port_):
+        mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_), remote_address(remote_address_), remote_port(remote_port_)
     {
-        req_info.reserve(7);
+        req_info.reserve(REQ_ERROR + 1);
         req_info.emplace_back("");
         req_info.emplace_back("");
         req_info.emplace_back(std::to_string(remote_port));
@@ -249,7 +252,7 @@ public:
                 std::string fail_message{"Unknown HTTP method in request from ip-address: " + remote_address.to_string()
                                             + ", port: " + std::to_string(remote_port) + '\n'};
                 if_fail->fail_report({ }, fail_message.c_str());
-                return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method\n"));
+                return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
                 break;
             }
             }
@@ -259,34 +262,26 @@ public:
             {
                 // Something wrong, sending back appropriate response
                 auto& what_is_wrong = req_info[REQ_ERROR];
+                std::string fail_message{what_is_wrong + " (request from ip-address: " + remote_address.to_string()
+                                                                            + ", port: " + std::to_string(remote_port) + ")"};
+                if_fail->fail_report({ }, fail_message.c_str());
+                what_is_wrong.push_back('\n');
                 if (what_is_wrong.starts_with("Illegal request"))
                 {
                     //If we are here, then we have illegal request-target
-                    std::string fail_message{"Illegal target in request from ip-address: " + remote_address.to_string()
-                                + ", port: " + std::to_string(remote_port) + '\n'};
-                    if_fail->fail_report({ }, fail_message.c_str());
                     return sender(string_body_res(b_b_http::status::bad_request, what_is_wrong));
                 } else {
                     if (what_is_wrong.starts_with("Several"))
                     {
                         //If we are here, then several files match the request-target at once
-                        std::string fail_message{"Several files in request from ip-address: " + remote_address.to_string()
-                                                    + ", port: " + std::to_string(remote_port) + " match the target at once\n"};
-                        if_fail->fail_report({ }, fail_message.c_str());
                         return sender(string_body_res(b_b_http::status::multiple_choices, what_is_wrong));
                     } else {
                         if (what_is_wrong.starts_with("Database"))
                         {
                             //If we are here, then we have some error with query to database
-                            std::string fail_message{"Error while querying database for target in request from ip-address: " + remote_address.to_string()
-                                                        + ", port: " + std::to_string(remote_port) + '\n'};
-                            if_fail->fail_report({ }, fail_message.c_str());
                             return sender(string_body_res(b_b_http::status::internal_server_error, what_is_wrong));
                         } else {
-                            //If we are here, then requested file doesn't exist
-                            std::string fail_message{"File requested from ip-address: " + remote_address.to_string()
-                                                        + ", port: " + std::to_string(remote_port) + " doesn't exist\n"};
-                            if_fail->fail_report({ }, fail_message.c_str());
+                            //If we are here, then requested file not found
                             return sender(string_body_res(b_b_http::status::not_found, what_is_wrong));
                         }
                     }
@@ -341,8 +336,6 @@ public:
         }
     }
     void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //Method for changing handler
-    void set_remote_address(b_a::ip::address remote_address_) { remote_address = remote_address_; }
-    void set_remote_port(port_type remote_port_) { remote_port = remote_port_; }
     template<class Body, class Allocator>
     void
     handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& req_info)    //Method
@@ -352,6 +345,7 @@ public:
         //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
         req_info[REQ_TARGET].resize(0);
         req_info[REQ_HOST].resize(0);
+        req_info[REQ_USER_AGENT].resize(0);
         req_info[REQ_METHOD].resize(0);
         req_info[REQ_RESULT].resize(0);
         req_info[REQ_ERROR].resize(0);
@@ -360,6 +354,8 @@ public:
         req_info[REQ_TARGET] = std::string(target.data(), target.size()); //Store target from request
         auto host = req[b_b_http::field::host];
         req_info[REQ_HOST] = std::string(host.data(), host.size());
+        auto user_agent = req[b_b_http::field::user_agent];
+        req_info[REQ_USER_AGENT] = std::string(user_agent.data(), user_agent.size());
         auto req_method = req.method_string();
         req_info[REQ_METHOD] = std::string(req_method.data(), req_method.size());
     }

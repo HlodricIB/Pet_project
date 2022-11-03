@@ -110,9 +110,10 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         {
             break;
         }
+        auto host_field = host_address[i] + ":" + port_service[i];
         //Set up an HTTP GET request message
         b_b_http::request<b_b_http::string_body> req{b_b_http::verb::get, target, version};
-        req.set(b_b_http::field::host, host_address[i]);
+        req.set(b_b_http::field::host, host_field);
         req.set(b_b_http::field::user_agent, client_name);
         //Set the timeout
         stream.expires_after(std::chrono::seconds(30));

@@ -61,7 +61,7 @@ private:
         std::string
         synch_cin(const Message message, bool if_cout)
         {
-            static std::string target;
+            static thread_local std::string target;
             std::lock_guard<std::mutex> lock(m);
             {
                 if (if_cout)

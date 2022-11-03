@@ -8,7 +8,8 @@
 size_t DB_module::conns_threads_count() const
 {
     auto thread_count = std::thread::hardware_concurrency();
-    return thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn* and threads
+    //return thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn* and threads
+    return thread_count > 0 ? thread_count : 1;  //Amount of PGconn* and threads
 }
 
 DB_module::DB_module(std::shared_ptr<Parser> p_DB)
@@ -322,7 +323,7 @@ PG_result::result_container PG_result::get_result_container() const
     outer_res_cntnr.reserve(nTuples);
     inner_result_container inner_res_cntnr;
     inner_res_cntnr.reserve(nFields);
-    //Forming log table header
+    //Forming table header
     const char* ptr{nullptr};
     std::size_t len{0};
     for (inner_result_container::size_type i = 0; i != nFields; ++i)
@@ -332,7 +333,7 @@ PG_result::result_container PG_result::get_result_container() const
         inner_res_cntnr.emplace_back(std::make_pair<const char*, size_t>(std::move(ptr), std::move(len)));
     }
     outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
-    //Forming log table content
+    //Forming table content
     for (result_container::size_type i = 0; i != nTuples; ++i)
     {
         inner_res_cntnr.reserve(nFields);
@@ -345,15 +346,6 @@ PG_result::result_container PG_result::get_result_container() const
         outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
     }
     return outer_res_cntnr;
-}
-
-int PG_result::get_result_command_tag() const
-{
-    if (nFields != 1 && nTuples != 1)
-    {
-        return -INT_MAX;
-    }
-    return std::atoi(PQgetvalue(result, 0, 0));
 }
 
 const std::string PG_result::res_error() const

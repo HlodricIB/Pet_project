@@ -9,32 +9,32 @@ bool Inotify_DB_handler::handle(std::vector<std::string>& arguments)
     if (arguments[ARGS_EVENT] == "add")
     {
         size_t uid = std::hash<std::string>{}(arguments[ARGS_ENTITY_NAME]);
-        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
+        command = "LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
                 "INSERT INTO song_table (id, song_name, song_uid, song_URL) VALUES (DEFAULT, "
                 + arguments[ARGS_ENTITY_NAME] + ", " + '\'' + std::to_string(uid) + '\'' + ", " + '\'' + arguments[ARGS_FILES_FOLDER] +
-                '\'' + "); COMMIT";
+                '\'' + ")";
         exec_command(command);
         return true;
     }
     if (arguments[ARGS_EVENT] == "delete")
     {
-        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
+        command = "LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
                     "DELETE FROM song_table WHERE song_name = " + arguments[ARGS_ENTITY_NAME] + "; ALTER SEQUENCE song_seq RESTART;"
-                    " UPDATE song_table SET ID = DEFAULT; COMMIT";
+                    " UPDATE song_table SET ID = DEFAULT";
         exec_command(command);
         return true;
     }
     if (arguments[ARGS_EVENT] == "dir_del")
     {
-        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY;"
-                    " ALTER SEQUENCE song_seq RESTART; UPDATE song_table SET ID = DEFAULT; COMMIT";
+        command = "LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY;"
+                    " ALTER SEQUENCE song_seq RESTART; UPDATE song_table SET ID = DEFAULT";
         exec_command(command);
         return true;
     }
     if (arguments[ARGS_EVENT] == "refresh")
     {
-        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY;"
-                    " ALTER SEQUENCE song_seq RESTART; COMMIT";
+        command = "LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; TRUNCATE song_table RESTART IDENTITY;"
+                    " ALTER SEQUENCE song_seq RESTART";
         auto future_res = DB_ptr->exec_command(command, true);   //Clearing previous song list
         auto res = future_res.get();    //Have to block here to avoid possibility of truncating subsequent addings
         if (!res->res_succeed())
@@ -73,20 +73,34 @@ void Inotify_DB_handler::exec_command(const std::string& command)
     return;
 }
 
-Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, int days_limit_, int rows_limit_): DB_ptr(DB_ptr_),
-                                                                                    days_limit(days_limit_), rows_limit(rows_limit_)
+Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, std::shared_ptr<Logger> logger_, int days_limit_,
+                                         int rows_limit_): DB_ptr(DB_ptr_), logger(logger_),
+                                                            days_limit(days_limit_), rows_limit(rows_limit_)
 {
     //Сhecking if there are entries in the log_table that it is time to delete
-    std::string command = "BEGIN; LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE;"
-                           "DELETE FROM log_table WHERE DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) < (INTERVAL '" +
+    std::string command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE;"
+                           "DELETE FROM log_table WHERE (DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) > (INTERVAL '" +
                             std::to_string(days_limit) +
-                            "' DAY); ALTER SEQUENCE log_seq RESTART; UPDATE log_table SET ID = DEFAULT; COMMIT";
+                            "' DAY)); ALTER SEQUENCE log_seq RESTART; UPDATE log_table SET ID = DEFAULT";
+    //DELETE FROM log_table WHERE (DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) >= (INTERVAL '1' DAY));
     auto future_res = DB_ptr->exec_command(command, true);  //True tells, that command must be pushed at the front of
                                                             //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
     if (!res->res_succeed())
     {
-        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        std::string message{"Database " + res->res_DB_name() + " error: " + res->res_error() + ", executing: " + command + " query\n"};
+        std::cerr << message << std::flush;
+        if (logger)
+        {
+            logger->make_record(message);
+        }
+    }
+    //Сounting number of rows in log_table
+    command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; SELECT count(*) FROM log_table";
+    auto res_rows = DB_ptr->exec_command(command, true).get();
+    if (static_cast<bool>(res_rows->get_rows_number()))
+    {
+        log_table_nrows.store(std::atoi(res_rows->get_result_single()));
     }
 }
 
@@ -97,6 +111,7 @@ enum : size_t
     REQ_HOST,
     REQ_PORT,
     REQ_IP_ADDRESS,
+    REQ_USER_AGENT,
     REQ_METHOD,
     REQ_RESULT,
     REQ_ERROR
@@ -104,33 +119,46 @@ enum : size_t
 
 void Server_HTTP_handler::update_log_table(std::vector<std::string>& req_info)
 {
-    static std::string command{"BEGIN; LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; SELECT count(*) FROM song_table; COMMIT;"};
-    static int log_table_nrows{DB_ptr->exec_command(command, true).get()->get_result_command_tag()};    //Number of columns in the log_table at the first pass
-                                                                                                        //through update_log_table()
-    //Checking if  number of rows in the log_table exceeds limit
-    if (log_table_nrows > rows_limit)
+    static thread_local std::string command;
+    //Checking if  number of rows in the log_table exceeds the limit
+    if (auto log_tables_nrows_temp = log_table_nrows.load(); log_tables_nrows_temp > rows_limit)
     {
-        command = "BEGIN; LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; "
-                    "DELETE FROM song_table WHERE id < " + std::to_string(rows_limit) + "; ALTER SEQUENCE song_seq RESTART;"
-                    " UPDATE song_table SET ID = DEFAULT; COMMIT";
+        static const auto rows_delete = rows_limit / 2;
+        command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; "
+                    "DELETE FROM log_table WHERE id <= " + std::to_string(rows_delete) + "; ALTER SEQUENCE log_seq RESTART;"
+                    " UPDATE log_table SET ID = DEFAULT; SELECT last_value FROM log_seq";
+        auto res = DB_ptr->exec_command(command, true).get();
+        if (!res->res_succeed())
+        {
+            //If we can't delete rows with id number exceeding the limit we don't bother to inform client about that, but we make
+                //appropriate record in log file
+            std::string message{"Database " + res->res_DB_name() + " error: " + res->res_error() + ", executing: " + command + " query\n"};
+            if (logger)
+            {
+                logger->make_record(message);
+            }
+        }
+        int temp_nrows = std::atoi(res->get_result_single());
+        log_table_nrows.compare_exchange_strong(log_tables_nrows_temp, temp_nrows);
     }
-    command = "BEGIN; LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; "
-                "INSERT INTO log_table (id, host, port, ip, rest_method, target, req_date_time) VALUES"
+    command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; "
+                "INSERT INTO log_table (id, requested_host, port, ip, user_agent, rest_method, target, req_date_time) VALUES"
                 "(DEFAULT, \'" +
                 req_info[REQ_HOST] + "\', \'" +
-                req_info[REQ_PORT] + "\'::serial, \'" +
+                req_info[REQ_PORT] + "\', \'" +
                 req_info[REQ_IP_ADDRESS] + "\'::inet, \'" +
+                req_info[REQ_USER_AGENT] + "\', \'" +
                 req_info[REQ_METHOD] + "\', \'" +
-                req_info[REQ_TARGET] + "\', \'" +
+                req_info[REQ_TARGET] + "\', " +
                 "LOCALTIMESTAMP" +
-                "); COMMIT";
+                ")";
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
     if (!res->res_succeed())
     {
-        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
-        req_info[REQ_ERROR] += std::string("Database " + res->res_DB_name() + " error while updating log table: " + res->res_error() + '\n');
+        //std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR] += std::string("Database " + res->res_DB_name() + " error while updating log table: " + res->res_error());
         return;
     }
     ++log_table_nrows;
@@ -138,19 +166,19 @@ void Server_HTTP_handler::update_log_table(std::vector<std::string>& req_info)
 
 void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info)
 {
-    static std::string command{"BEGIN; LOCK TABLE song_table IN SHARE MODE; SELECT id, song_name, song_uid FROM song_table; COMMIT"};
+    static const std::string command{"LOCK TABLE song_table IN SHARE MODE; SELECT id, song_name, song_uid FROM song_table"};
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
     if (!res->res_succeed())
     {
-        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
-        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming files table: " + res->res_error() + '\n'));
+        //std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming files table: " + res->res_error()));
         return;
     }
     if (res->get_rows_number() == 0)
     {
-        req_info[REQ_RESULT] = "No files available at that moment\n";
+        req_info[REQ_RESULT] = "No files available at that moment";
         return;
     }
     result_container res_cntnr(res->get_result_container());
@@ -159,19 +187,19 @@ void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info
 
 void Server_HTTP_handler::forming_log_table(std::vector<std::string>& req_info)
 {
-    static std::string command{"BEGIN; LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table; COMMIT"};
+    static std::string command{"LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table"};
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
     if (!res->res_succeed())
     {
-        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
-        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming log table: " + res->res_error() + '\n'));
+        //std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command << " query" << std::endl;
+        req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while forming log table: " + res->res_error()));
         return;
     }
     if (res->get_rows_number() == 0)
     {
-        req_info[REQ_RESULT] = "Log table have no records at that moment\n";
+        req_info[REQ_RESULT] += "Log table have no records at that moment";
         return;
     }
     result_container res_cntnr(res->get_result_container());
@@ -197,7 +225,7 @@ void Server_HTTP_handler::forming_tables_helper(std::vector<std::string>& req_in
     {
         for (inner_result_container::size_type j = 0; j != n_columns; ++j)
         {
-            req_info[REQ_RESULT] += res_cntnr[i][j].first + std::string(vec_max_len[j] - res_cntnr[i][j].second + 1, ' ');
+            req_info[REQ_RESULT] += res_cntnr[i][j].first + std::string(vec_max_len[j] - res_cntnr[i][j].second + 2, ' ');
         }
         req_info[REQ_RESULT].append(1, '\n');
     }
@@ -208,7 +236,7 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     auto& target = req_info[REQ_TARGET];
     if (target.back() == '/' || target.find("..") != std::string::npos)
     {
-        req_info[REQ_ERROR] = "Illegal request-target\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
+        req_info[REQ_ERROR] = "Illegal request-target";  //Fill target_body_info[REQ_ERROR] element (element for error)
         return;
     }
 
@@ -216,8 +244,8 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     {
         target.back() = '%';
     }
-    static std::string command_name{"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO " + target + " ;"};
-    static std::string command_uid{"SELECT song_name, song_url FROM song_table WHERE song_uid SIMILAR TO " + target + " ;"};
+    static const std::string command_name{"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO \'" + target + "\';"};
+    static const std::string command_uid{"SELECT song_name, song_url FROM song_table WHERE song_uid SIMILAR TO \'" + target + "\';"};
     auto future_res_name = DB_ptr->exec_command(command_name, false);  //Second argument (false) tells, that command must be queued in a
                                                                        //task_deque of appropriate thread pool that works with DB_module
     //"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO 'rt%?' LIMIT 1;"
@@ -225,19 +253,19 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     auto res_name = future_res_name.get();
     auto res_uid = future_res_uid.get();
     shared_PG_result res{nullptr};
-    auto handled_name = res_handle(req_info, res_name, command_name);
+    auto handled_name = res_handle(req_info, res_name);
     if (handled_name == DB_ERROR || handled_name == SEVERAL_FILES)
     {
         return;
     }
-    auto handled_uid = res_handle(req_info, res_uid, command_uid);
+    auto handled_uid = res_handle(req_info, res_uid);
     if (handled_uid == DB_ERROR || handled_uid == SEVERAL_FILES)
     {
         return;
     }
     if (handled_name == NOT_FOUND && handled_uid == NOT_FOUND)
     {
-        req_info[REQ_ERROR] = "File " + target + " not found\n";
+        req_info[REQ_ERROR] = "File " + target + " not found";
         return;
     }
     if (handled_name == RESULT_IS_OK && handled_uid != RESULT_IS_OK)
@@ -249,7 +277,7 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
         {
            res = res_uid;
         } else {
-            req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once\n";
+            req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once";
             return;
         }
     }
@@ -258,15 +286,15 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     req_info[REQ_RESULT] = res_cntnr[1][1].first + std::string('/' + target);
 }
 
-int Server_HTTP_handler::res_handle(std::vector<std::string>& req_info, shared_PG_result res, std::string& command_name)
+int Server_HTTP_handler::res_handle(std::vector<std::string>& req_info, shared_PG_result res)
 {
     auto& target = req_info[REQ_TARGET];
     if (!res->res_succeed())
     {
-        std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command_name
-                  << " query" << std::endl;
+        //std::cerr << "Database " << res->res_DB_name() << " error: " << res->res_error() << ", executing: " << command_name
+        //          << " query" << std::endl;
         req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " error while searching for target "
-                                    + target + ": "+ res->res_error() + '\n'));
+                                    + target + ": "+ res->res_error()));
         return DB_ERROR;
     }
     auto rows_number = res->get_rows_number();
@@ -276,7 +304,7 @@ int Server_HTTP_handler::res_handle(std::vector<std::string>& req_info, shared_P
     }
     if (rows_number > 1)
     {
-        req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once\n";
+        req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once";
         return SEVERAL_FILES;
     }
     if (rows_number == 0)
@@ -285,15 +313,15 @@ int Server_HTTP_handler::res_handle(std::vector<std::string>& req_info, shared_P
     }
     //Actually we shouldn't be here, but just in case
     req_info[REQ_ERROR].append(std::string("Database " + res->res_DB_name() + " returned unusual result while searching for target "
-                                + target + '\n'));
+                                + target));
     return DB_ERROR;
 }
 
 bool Server_HTTP_handler::handle(std::vector<std::string>& req_info)    //Returning bool value shows if we have request for file (true) or
                                                                         //request for something else (false)
                                                                         //First element is requested target, second - host, third - port, fourth - ip
-                                                                        //fifth - method, sixth - is for storing result of handling by Handler,
-                                                                        //seventh - is for storing possible error message
+                                                                        //fifth - user_agent, sixth - method, seventh - is for storing result of handling by Handler,
+                                                                        //eighth - is for stroring possible error message
 {
     auto& target = req_info[REQ_TARGET];
     update_log_table(req_info);
@@ -313,7 +341,7 @@ bool Server_HTTP_handler::handle(std::vector<std::string>& req_info)    //Return
     //Check if we have a request for logs table
     if (target == "log_table" || target == "Log_table")
     {
-        forming_files_table(req_info);
+        forming_log_table(req_info);
         return false;
     }
     //If we are here, we have a request for file
@@ -335,6 +363,10 @@ void Server_dir_handler::check_dir()
             msg = "Given path to files dir is not a directory";
         }
         std::cerr << msg << std::endl;
+        if (logger)
+        {
+            logger->make_record(std::string{msg.data(), msg.size()});
+        }
         files_path.clear();
         check_res = false;
         return;
@@ -347,10 +379,10 @@ void Server_dir_handler::find(std::vector<std::string>& req_info)
     auto& target = req_info[REQ_TARGET];
     if (target.back() == '/' || target.find("..") != std::string::npos)
     {
-        req_info[REQ_ERROR] = "Illegal request-target\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
+        req_info[REQ_ERROR] = "Illegal request-target";  //Fill target_body_info[REQ_ERROR] element (element for error)
         return;
     }
-    static std::function<bool(std::string_view)> compare;
+    static thread_local std::function<bool(std::string_view)> compare;
     if (target.size() > 1 && target.back() == '*')
     {
         target.resize(target.size() - 1);
@@ -379,7 +411,7 @@ void Server_dir_handler::find(std::vector<std::string>& req_info)
             }
         }
     }
-    req_info[REQ_ERROR] = "File " + target + " not found\n";  //Fill target_body_info[REQ_ERROR] element (element for error)
+    req_info[REQ_ERROR] = "File " + target + " not found";  //Fill target_body_info[REQ_ERROR] element (element for error)
     return;
 }
 

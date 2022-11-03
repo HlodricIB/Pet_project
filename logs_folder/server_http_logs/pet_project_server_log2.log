@@ -1,0 +1,20 @@
+Thu Nov  3 14:29:51 2022 	pet_project_server starting...
+Thu Nov  3 14:29:52 2022 	Server pet_project_server starts listening port 8080 with IP-address: 0.0.0.0
+Thu Nov  3 14:30:21 2022 	Connected to IP-address: 127.0.0.1, port: 48986
+Thu Nov  3 14:30:21 2022 	Connected to IP-address: 127.0.0.1, port: 58238
+Thu Nov  3 14:30:25 2022 	The remote host with IP-address: 127.0.0.1, port: 48986 closed the connection: end of stream
+Thu Nov  3 14:30:25 2022 	Closing connection with IP-address: 127.0.0.1, port: 48986 : 
+Thu Nov  3 14:30:47 2022 	pet_project_server starting...
+Thu Nov  3 14:30:47 2022 	Server pet_project_server starts listening port 8080 with IP-address: 0.0.0.0
+Thu Nov  3 14:30:52 2022 	Connected to IP-address: 127.0.0.1, port: 49494
+Thu Nov  3 14:30:52 2022 	Connected to IP-address: 127.0.0.1, port: 54126
+Thu Nov  3 14:30:54 2022 	The remote host with IP-address: 127.0.0.1, port: 49494 closed the connection: end of stream
+Thu Nov  3 14:30:54 2022 	Closing connection with IP-address: 127.0.0.1, port: 49494 : 
+Thu Nov  3 14:31:13 2022 	pet_project_server starting...
+Thu Nov  3 14:31:13 2022 	Server pet_project_server starts listening port 8080 with IP-address: 0.0.0.0
+Thu Nov  3 14:31:18 2022 	Connected to IP-address: 127.0.0.1, port: 35274
+Thu Nov  3 14:31:18 2022 	Connected to IP-address: 127.0.0.1, port: 36230
+Thu Nov  3 14:31:25 2022 	The remote host with IP-address: 127.0.0.1, port: 36230 closed the connection: end of stream
+Thu Nov  3 14:31:25 2022 	Closing connection with IP-address: 127.0.0.1, port: 36230 : 
+Thu Nov  3 14:32:59 2022 	Error while reading message from remote host with IP-address: 127.0.0.1, port: 35274 : The socket was closed due to a timeout
+Thu Nov  3 14:32:59 2022 	Connection with IP-address: 127.0.0.1, port: 35274 closed due to timeout
