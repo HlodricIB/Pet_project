@@ -236,7 +236,7 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             //Make the request empty before reading, otherwise the operation behavior is undefined
             req = { };
             //Set the timeout
-            _stream.expires_after(std::chrono::minutes(1));
+            _stream.expires_after(std::chrono::minutes(5));
             yield b_b_http::async_read(_stream, _buffer, req, b_b::bind_front_handler(&Session::session_loop, shared_from_this(), false));
             if (ec == b_b_http::error::end_of_stream)
             {

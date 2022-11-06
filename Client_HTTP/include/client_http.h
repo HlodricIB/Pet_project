@@ -47,27 +47,29 @@ private:
     struct Messaging
     {
     private:
-        std::mutex m;
+        std::mutex im;
+        std::mutex om;
     public:
         Messaging() { }
         template<typename Message>
         void
-        synch_cout(const Message message)
+        synch_cout(const Message message, std::ostream& os)
         {
-            std::lock_guard<std::mutex> lock(m);
-            std::cout << message << std::flush;
+            std::lock_guard<std::mutex> lock(om);
+            os << message << std::flush;
         }
         template<typename Message>
         std::string
         synch_cin(const Message message, bool if_cout)
         {
             static thread_local std::string target;
-            std::lock_guard<std::mutex> lock(m);
             {
                 if (if_cout)
                 {
+                    std::scoped_lock<std::mutex, std::mutex> lock(om, im);
                     std::cout << message << std::flush;
                 }
+                std::lock_guard<std::mutex> lock(im);
                 std::getline(std::cin, target);
             }
             return target;
@@ -81,9 +83,11 @@ private:
     int version;
     std::vector<std::thread> ioc_threads;   //Threads for ioc to run
     void parse(const std::string_view&, std::vector<std::string>&);
-    void fail_report(boost::system::error_code ec, const char* reason) const { std::cerr << reason << ec.message() << std::endl; }
+    template<typename Error_code>
+    void
+    fail_report(Error_code ec, const char* reason) { msgng.synch_cout(std::string(reason + ec.message()), std::cout); }
     void do_session(std::vector<std::string>::size_type, b_a::yield_context);
-    void set_params_file_body_parser(b_b_http::response_parser<b_b_http::file_body>&, const std::filesystem::path&); //Second argument is a reference to download dir the appropriate
+    bool set_params_file_body_parser(b_b_http::response_parser<b_b_http::file_body>&, const std::filesystem::path&); //Second argument is a reference to download dir the appropriate
                                                                                                                      //directory for the corresponding host and port
 public:
     explicit Client_HTTP(std::shared_ptr<Parser>);

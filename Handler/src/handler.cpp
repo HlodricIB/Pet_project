@@ -77,9 +77,26 @@ Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, std
                                          int rows_limit_): DB_ptr(DB_ptr_), logger(logger_),
                                                             days_limit(days_limit_), rows_limit(rows_limit_)
 {
+    //Renumbering id columns in songs_table and log_table, for any case
+    std::string command{"LOCK TABLE song_table IN ACCESS EXCLUSIVE MODE; ALTER SEQUENCE song_seq RESTART; UPDATE song_table SET ID = DEFAULT;"
+        "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE; ALTER SEQUENCE log_seq RESTART; UPDATE log_table SET ID = DEFAULT"};
+    auto future_res_id_update = DB_ptr->exec_command(command, true);    //True tells, that command must be pushed at the front of
+                                            //task_deque of appropriate thread pool that works with DB_module
+    auto res_id_update = future_res_id_update.get();
+    std::string message;    //For error messages
+    if (!res_id_update->res_succeed())
+    {
+        message = "Couldn't update ids in tables of database: " + res_id_update->res_DB_name() + " error: " +
+                                                        res_id_update->res_error() + ", executing: " + command + " query\n";
+        std::cerr << message << std::flush;
+        if (logger)
+        {
+            logger->make_record(message);
+        }
+    }
     //Сhecking if there are entries in the log_table that it is time to delete
-    std::string command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE;"
-                           "DELETE FROM log_table WHERE (DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) > (INTERVAL '" +
+    command = "LOCK TABLE log_table IN ACCESS EXCLUSIVE MODE;"
+                           "DELETE FROM log_table WHERE (DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) >= (INTERVAL '" +
                             std::to_string(days_limit) +
                             "' DAY)); ALTER SEQUENCE log_seq RESTART; UPDATE log_table SET ID = DEFAULT";
     //DELETE FROM log_table WHERE (DATE_TRUNC('days', (LOCALTIMESTAMP - req_date_time)) >= (INTERVAL '1' DAY));
@@ -88,7 +105,7 @@ Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, std
     auto res = future_res.get();
     if (!res->res_succeed())
     {
-        std::string message{"Database " + res->res_DB_name() + " error: " + res->res_error() + ", executing: " + command + " query\n"};
+        message = "Database " + res->res_DB_name() + " error: " + res->res_error() + ", executing: " + command + " query\n";
         std::cerr << message << std::flush;
         if (logger)
         {
@@ -187,7 +204,7 @@ void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info
 
 void Server_HTTP_handler::forming_log_table(std::vector<std::string>& req_info)
 {
-    static std::string command{"LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table"};
+    static const std::string command{"LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table"};
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
@@ -220,13 +237,15 @@ void Server_HTTP_handler::forming_tables_helper(std::vector<std::string>& req_in
         }
     }
     //Forming files table in std::string
-    ++n_columns;   //All columns must be present in the result string
+    inner_result_container::size_type j;
     for (result_container::size_type i = 0; i != res_cntnr.size(); ++i)
     {
-        for (inner_result_container::size_type j = 0; j != n_columns; ++j)
+        for (j = 0; j != n_columns; ++j)
         {
             req_info[REQ_RESULT] += res_cntnr[i][j].first + std::string(vec_max_len[j] - res_cntnr[i][j].second + 2, ' ');
         }
+        //Adding last column in the requested table, this column doesn't need adding spaces for output
+        req_info[REQ_RESULT] += (res_cntnr[i][j].first);
         req_info[REQ_RESULT].append(1, '\n');
     }
 }
@@ -244,12 +263,18 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     {
         target.back() = '%';
     }
-    static const std::string command_name{"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO \'" + target + "\';"};
-    static const std::string command_uid{"SELECT song_name, song_url FROM song_table WHERE song_uid SIMILAR TO \'" + target + "\';"};
+    static thread_local std::string command_name{"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO \'"};
+    static thread_local std::string command_uid{"SELECT song_name, song_url FROM song_table WHERE song_uid SIMILAR TO \'"};
+    static const auto command_name_start_size = command_name.size();
+    static const auto command_uid_start_size = command_uid.size();
+    command_name += target + "\';";
+    command_uid += target + "\';";
     auto future_res_name = DB_ptr->exec_command(command_name, false);  //Second argument (false) tells, that command must be queued in a
                                                                        //task_deque of appropriate thread pool that works with DB_module
     //"SELECT song_name, song_url FROM song_table WHERE song_name SIMILAR TO 'rt%?' LIMIT 1;"
+    command_name.resize(command_name_start_size);
     auto future_res_uid = DB_ptr->exec_command(command_uid, false);
+    command_uid.resize(command_uid_start_size);
     auto res_name = future_res_name.get();
     auto res_uid = future_res_uid.get();
     shared_PG_result res{nullptr};
@@ -463,8 +488,9 @@ bool Server_dir_handler::set_path(const char* files_path_)
 }
 
 bool Server_dir_handler::handle(std::vector<std::string>& req_info) //First element is requested target, second - host, third - port, fourth - ip
-                                                                    //fifth - method, sixth - is for storing result of handling by Handler,
-                                                                    //seventh - is for stroring possible error message
+                                                                    //fifth - user_agent, sixth - method,
+                                                                    //seventh - is for storing result of handling by Handler,
+                                                                    //eighth - is for stroring possible error message
 {
     auto& target = req_info[REQ_TARGET];
     //Check if we have a request for files table

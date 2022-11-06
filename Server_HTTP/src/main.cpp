@@ -12,8 +12,9 @@ int main()
     }
     using namespace server_http;
     auto parser_server_http = std::make_shared<Parser_Server_HTTP>(path_to_config.return_path());
-    /*This works with handler that works directly with dir
-    auto srvr_hlpr_clss = std::make_shared<Srvr_hlpr_clss>(parser_server_http, false, false, true, true);*/
+    /*//This works with handler that works directly with dir
+    auto srvr_hlpr_clss = std::make_shared<Srvr_hlpr_clss>(parser_server_http, false, false, true, true);
+    Server_HTTP server_http{srvr_hlpr_clss};*/
     //This works with handler that works with database
     auto parser_DB_module = std::make_shared<Parser_DB>(path_to_config.return_path());
     auto module_DB = std::make_shared<DB_module>(parser_DB_module);

@@ -186,6 +186,28 @@ private:
                                         //First element is requested target, second - host, third - port, fourth - ip
                                         //fifth - user_agent, sixth - method, seventh - is for storing result of handling by Handler,
                                         //eighth - is for stroring possible error message
+    template<class Body, class Allocator>
+    void
+    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req)    //Method for filling req_info                                                                                      //to fill std::vector<std::string> for handler
+    {
+        //First element of target_body_info is requested target, second - host, third - port, fourth - ip, fifth - method,
+        //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
+        req_info[REQ_TARGET].resize(0);
+        req_info[REQ_HOST].resize(0);
+        req_info[REQ_USER_AGENT].resize(0);
+        req_info[REQ_METHOD].resize(0);
+        req_info[REQ_RESULT].resize(0);
+        req_info[REQ_ERROR].resize(0);
+        auto target = req.target();
+        target.remove_prefix(1);
+        req_info[REQ_TARGET] = std::string(target.data(), target.size()); //Store target from request
+        auto host = req[b_b_http::field::host];
+        req_info[REQ_HOST] = std::string(host.data(), host.size());
+        auto user_agent = req[b_b_http::field::user_agent];
+        req_info[REQ_USER_AGENT] = std::string(user_agent.data(), user_agent.size());
+        auto req_method = req.method_string();
+        req_info[REQ_METHOD] = std::string(req_method.data(), req_method.size());
+    }
 public:
     Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Handler> handler_, std::shared_ptr<If_fail> if_fail_,
                    b_b::string_view server_name_, b_a::ip::address remote_address_, port_type remote_port_):
@@ -222,7 +244,7 @@ public:
         {
             return sender(string_body_res(b_b_http::status::bad_request, "Unknown HTTP method"));
         }
-        handler_vector_fill(req, req_info);
+        handler_vector_fill(req);
         auto if_file = handler->handle(req_info);   //Returning bool value shows if we have request for file (true) or
                                                     //request for something else (false)
         //Check if we have a request for files list
@@ -336,29 +358,6 @@ public:
         }
     }
     void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //Method for changing handler
-    template<class Body, class Allocator>
-    void
-    handler_vector_fill(b_b_http::request<Body, b_b_http::basic_fields<Allocator>>& req, std::vector<std::string>& req_info)    //Method
-                                                                                           //to fill std::vector<std::string> for handler
-    {
-        //First element of target_body_info is requested target, second - host, third - port, fourth - ip, fifth - method,
-        //sixth - is for storing result of handling by Handler, seventh - is for storing possible error message
-        req_info[REQ_TARGET].resize(0);
-        req_info[REQ_HOST].resize(0);
-        req_info[REQ_USER_AGENT].resize(0);
-        req_info[REQ_METHOD].resize(0);
-        req_info[REQ_RESULT].resize(0);
-        req_info[REQ_ERROR].resize(0);
-        auto target = req.target();
-        target.remove_prefix(1);
-        req_info[REQ_TARGET] = std::string(target.data(), target.size()); //Store target from request
-        auto host = req[b_b_http::field::host];
-        req_info[REQ_HOST] = std::string(host.data(), host.size());
-        auto user_agent = req[b_b_http::field::user_agent];
-        req_info[REQ_USER_AGENT] = std::string(user_agent.data(), user_agent.size());
-        auto req_method = req.method_string();
-        req_info[REQ_METHOD] = std::string(req_method.data(), req_method.size());
-    }
 };
 
 class Session : public b_a::coroutine, public std::enable_shared_from_this<Session>

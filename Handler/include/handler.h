@@ -38,7 +38,6 @@ public:
     using result_container = std::vector<std::vector<std::pair<const char*, size_t>>>;
     using inner_result_container = std::vector<std::pair<const char*, size_t>>;
 private:
-    std::mutex m;   //For updating log_table_nrows
     std::shared_ptr<DB_module> DB_ptr{nullptr};
     std::shared_ptr<Logger> logger{nullptr};
     int rows_limit{0};  //Number of rows to store in log_table, after exceeding this value, first rows_limit rows clearing
@@ -64,8 +63,8 @@ public:
     virtual bool handle(std::vector<std::string>&) override;    //Returning bool value shows if we have request for file (true) or
                                                                 //request for something else (false)
                                                                 //First element is requested target, second - host, third - port, fourth - ip
-                                                                //fifth - method, sixth - is for storing result of handling by Handler,
-                                                                //seventh - is for stroring possible error message
+                                                                //fifth - user_agent, sixth - method, seventh - is for storing result of handling by Handler,
+                                                                //eighth - is for stroring possible error message
 };
 
 class Server_dir_handler : public Handler
