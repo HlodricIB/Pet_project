@@ -169,6 +169,7 @@ void Server_HTTP_handler::update_log_table(std::vector<std::string>& req_info)
                 req_info[REQ_TARGET] + "\', " +
                 "LOCALTIMESTAMP" +
                 ")";
+    //INSERT INTO log_table (id, requested_host, port, ip, user_agent, rest_method, target, req_date_time) VALUES(DEFAULT, 'test_host', 'test_req_port', '168.0.0.1'::inet, 'test_req_user_agent', 'test_req_method', 'test_req_target', LOCALTIMESTAMP);
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
@@ -183,7 +184,7 @@ void Server_HTTP_handler::update_log_table(std::vector<std::string>& req_info)
 
 void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info)
 {
-    static const std::string command{"LOCK TABLE song_table IN SHARE MODE; SELECT id, song_name, song_uid FROM song_table"};
+    static const std::string command{"LOCK TABLE song_table IN SHARE MODE; SELECT id, song_name, song_uid FROM song_table ORDER BY id"};
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();
@@ -204,7 +205,7 @@ void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info
 
 void Server_HTTP_handler::forming_log_table(std::vector<std::string>& req_info)
 {
-    static const std::string command{"LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table"};
+    static const std::string command{"LOCK TABLE log_table IN SHARE MODE; SELECT * FROM log_table ORDER BY id"};
     auto future_res = DB_ptr->exec_command(command, false);  //Second argument (false) tells, that command must be queued in a
                                                              //task_deque of appropriate thread pool that works with DB_module
     auto res = future_res.get();

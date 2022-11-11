@@ -20,7 +20,9 @@ int main()
     auto module_DB = std::make_shared<DB_module>(parser_DB_module);
     auto srvr_hlpr_clss = std::make_shared<Srvr_hlpr_clss>(parser_server_http, false, false, true, false);
     Server_HTTP server_http{srvr_hlpr_clss};
-    auto server_HTTP_handler = std::make_shared<Server_HTTP_handler>(module_DB, srvr_hlpr_clss->get_logger());
+    auto server_HTTP_handler = std::make_shared<Server_HTTP_handler>(module_DB, srvr_hlpr_clss->get_logger(),
+                                                                std::atoi(srvr_hlpr_clss->get_parser()->parsed_info_ptr()[DAYS_LIMIT]),
+                                                                std::atoi(srvr_hlpr_clss->get_parser()->parsed_info_ptr()[ROWS_LIMIT]));
     srvr_hlpr_clss->set_handler(server_HTTP_handler);
     server_http.run();
 

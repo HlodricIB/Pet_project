@@ -98,8 +98,9 @@ public:
 class Parser_Server_HTTP : public Parser
 {
 private:
-    constexpr static int expected_count{7};
-    constexpr static const char* expected[expected_count]{"address", "port", "server_name", "files_folder", "logs_folder", "max_log_file_size", "num_threads"};
+    constexpr static int expected_count{9};
+    constexpr static const char* expected[expected_count]{"address", "port", "server_name", "files_folder", "logs_folder", "max_log_file_size", "num_threads",
+                                                                                                                                    "days_limit", "rows_limit"};
     void constructing_massives(const prop_tree::ptree&);
 public:
     Parser_Server_HTTP() { };
@@ -115,9 +116,9 @@ public:
 class Parser_Client_HTTP : public Parser
 {
 private:
-    constexpr static int expected_count{6};
+    constexpr static int expected_count{7};
     constexpr static const char* expected[expected_count]{"host(address)", "port(service)", "client_name", "version", "num_threads",
-    "download_dir"};
+                                                                                                    "download_dir", "target_requests"};
     void constructing_massives(const prop_tree::ptree&);
 public:
     Parser_Client_HTTP() { };

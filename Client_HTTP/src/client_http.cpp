@@ -18,16 +18,27 @@ Client_HTTP::Client_HTTP(std::shared_ptr<Parser> parser):
     num_threads{std::max<int>(1, std::min<int>(std::thread::hardware_concurrency(), std::atoi(parser->parsed_info_ptr()[NUM_THREADS])))},
     ioc{num_threads},
     client_name(parser->parsed_info_ptr()[CLIENT_NAME]),
-    msgng()
+    msgng(*this)
 {
     std::string_view h_a{parser->parsed_info_ptr()[HOST_ADDRESS]};
     std::string_view p_s{parser->parsed_info_ptr()[PORT_SERVICE]};
     std::string_view d_d{parser->parsed_info_ptr()[DOWNLOAD_DIR]};
+    std::string_view r_t{parser->parsed_info_ptr()[TARGETS]};
     parse(h_a, host_address);
     parse(p_s, port_service);
     parse(d_d, download_dirs);
+    parse(r_t, targets);
     const char* _version = parser->parsed_info_ptr()[VERSION];
     version = (std::strcmp(_version, "\0") || !std::strcmp(_version, "1.0")) ? 10 : 11;
+    if(!targets.empty())
+    {
+        std::cout << "Enter how many times to loop through the target vector:\n";
+        int temp;
+        std::cin >> temp;
+        targets_loops.store(temp);
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
 }
 
 Client_HTTP::~Client_HTTP()
@@ -52,7 +63,7 @@ void Client_HTTP::parse(const std::string_view& s_w, std::vector<std::string>& c
         pos_end = s_w.find(",", pos_begin);
         c.push_back(std::string(s_w.substr(pos_begin, (pos_end - pos_begin))));
         //Exclude spaces
-        for (pos_begin = pos_end; pos_begin != _npos  && std::isspace(s_w[++pos_begin]); );
+        for (pos_begin = pos_end; pos_begin != _npos && std::isspace(s_w[++pos_begin]); );
         pos_end = pos_begin;
     }
 }
@@ -98,18 +109,35 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
     }
     std::stringstream message;
     std::string target(1, '/');
-    // Path to download dir
-    const std::filesystem::path path_to_dwnld_dir = download_dirs[i];
+    //Path to download dir
+    static const std::vector<std::string>::size_type n_dir = download_dirs.size() - 1;
+    std::vector<std::string>::size_type i_dir = i > n_dir ? n_dir : i;
+    const std::filesystem::path path_to_dwnld_dir = download_dirs[i_dir];
     for (;;)
     {
-        //Rewind
-        message.seekp(0);
-        message << "Enter target for request (\":q\" to close connection): (" << std::this_thread::get_id() << ")\n";
-        target.append(msgng.synch_cin(message.view(), true));
-        if (target == "/:q")
+        if (auto temp_loops = targets_loops.load(); temp_loops > 0 && !targets.empty())
         {
-            break;
+            if (size_v_s temp_index = targets_index.fetch_add(1); temp_index <= targets.size())
+            {
+                target.append(targets[temp_index]);
+            } else {
+                ++temp_index; //++ here to make compare_exchange_strong (we incremented targets_index by one already)
+                auto temp_loops_desired = temp_loops - 1;
+                targets_loops.compare_exchange_strong(temp_loops, temp_loops_desired);
+                targets_index.compare_exchange_strong(temp_index, 0); //Begin next loop over targets
+                target.append(targets[targets_index.fetch_add(1)]);
+            }
+        } else {
+            //Rewind
+            message.seekp(0);
+            message << "Enter target for request (\":q\" to close connection): (" << std::this_thread::get_id() << ")\n";
+            target.append(msgng.synch_cin(message.view(), true));
+            if (target == "/:q")
+            {
+                break;
+            }
         }
+
         auto host_field = host_address[i] + ":" + port_service[i];
         //Set up an HTTP GET request message
         b_b_http::request<b_b_http::string_body> req{b_b_http::verb::get, target, version};
@@ -158,7 +186,7 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
                 break;
             }
             //Write the message to standard out
-            msgng.synch_cout(res.release(), std::cout);
+            msgng.synch_cout(res.release(), true);
         } else  //Here we have file to load
         {
             b_b_http::response_parser<b_b_http::file_body> res{std::move(res0)};
@@ -176,7 +204,7 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
                 break;
             }
             //Write the message header to standard out
-            msgng.synch_cout(res.get().base(), std::cout);
+            msgng.synch_cout(res.get().base(), true);   //True shows, that we want std::cout, not std::cerr (false)
         }
         target.resize(0);   //Clearing prevoius target
         target.push_back('/');
@@ -218,7 +246,7 @@ bool Client_HTTP::set_params_file_body_parser(b_b_http::response_parser<b_b_http
     path_to_file = path_to_dwnld_dir / filename;
     if (!std::filesystem::exists(path_to_dwnld_dir))
     {
-        msgng.synch_cout("Download directory doesn't exist, it will be created now", std::cout);
+        msgng.synch_cout("Download directory doesn't exist, it will be created now", true);
         std::error_code std_ec;
         std::filesystem::create_directories(path_to_dwnld_dir, std_ec);
         if (std_ec)

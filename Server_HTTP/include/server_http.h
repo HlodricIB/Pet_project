@@ -116,7 +116,9 @@ enum : size_t
     FILES_FOLDER,
     LOGS_FOLDER,
     MAX_LOG_FILE_SIZE,
-    NUM_THREADS
+    NUM_THREADS,
+    DAYS_LIMIT,
+    ROWS_LIMIT
 };
 
 namespace b_a = boost::asio;

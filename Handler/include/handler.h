@@ -59,7 +59,7 @@ private:
     };
     int res_handle(std::vector<std::string>&, shared_PG_result);  //Returning int value shows result of handling
 public:
-    Server_HTTP_handler(std::shared_ptr<DB_module>, std::shared_ptr<Logger> = nullptr, int days_limit_ = 5, int rows_limit_ = 10);
+    Server_HTTP_handler(std::shared_ptr<DB_module>, std::shared_ptr<Logger> = nullptr, int days_limit_ = 366, int rows_limit_ = INT_MAX);
     virtual bool handle(std::vector<std::string>&) override;    //Returning bool value shows if we have request for file (true) or
                                                                 //request for something else (false)
                                                                 //First element is requested target, second - host, third - port, fourth - ip
