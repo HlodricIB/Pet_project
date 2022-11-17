@@ -18,7 +18,7 @@ Client_HTTP::Client_HTTP(std::shared_ptr<Parser> parser):
     num_threads{std::max<int>(1, std::min<int>(std::thread::hardware_concurrency(), std::atoi(parser->parsed_info_ptr()[NUM_THREADS])))},
     ioc{num_threads},
     client_name(parser->parsed_info_ptr()[CLIENT_NAME]),
-    msgng(*this)
+    msgng()
 {
     std::string_view h_a{parser->parsed_info_ptr()[HOST_ADDRESS]};
     std::string_view p_s{parser->parsed_info_ptr()[PORT_SERVICE]};
@@ -36,6 +36,10 @@ Client_HTTP::Client_HTTP(std::shared_ptr<Parser> parser):
         int temp;
         std::cin >> temp;
         targets_loops.store(temp);
+        if (temp > 0)
+        {
+            targets_looping_over.store(false);  //We have to loop over targets vector
+        }
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
@@ -107,37 +111,43 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
                 + ", port_service: " + port_service[i] + ", ";
         return fail_report(ec, reason.c_str());
     }
-    std::stringstream message;
     std::string target(1, '/');
     //Path to download dir
     static const std::vector<std::string>::size_type n_dir = download_dirs.size() - 1;
+    static const size_v_s targets_size = targets.size();
     std::vector<std::string>::size_type i_dir = i > n_dir ? n_dir : i;
     const std::filesystem::path path_to_dwnld_dir = download_dirs[i_dir];
     for (;;)
     {
-        if (auto temp_loops = targets_loops.load(); temp_loops > 0 && !targets.empty())
+        if (!targets_looping_over.load())
         {
-            if (size_v_s temp_index = targets_index.fetch_add(1); temp_index <= targets.size())
+            auto temp_loops = targets_loops.load();
+            if (size_v_s temp_index = targets_index.fetch_add(1); temp_index < targets_size)
             {
                 target.append(targets[temp_index]);
             } else {
                 ++temp_index; //++ here to make compare_exchange_strong (we incremented targets_index by one already)
                 auto temp_loops_desired = temp_loops - 1;
                 targets_loops.compare_exchange_strong(temp_loops, temp_loops_desired);
-                targets_index.compare_exchange_strong(temp_index, 0); //Begin next loop over targets
-                target.append(targets[targets_index.fetch_add(1)]);
+                (targets_index.compare_exchange_strong(temp_index, 0)); //Begin next loop over targets
+                if (targets_loops.load() > 0)
+                {
+                    target.append(targets[targets_index.fetch_add(1)]);
+                } else {
+                    targets_looping_over.store(true);
+                }
             }
-        } else {
-            //Rewind
-            message.seekp(0);
+        }
+        if (targets_looping_over.load())
+        {
+            std::stringstream message;
             message << "Enter target for request (\":q\" to close connection): (" << std::this_thread::get_id() << ")\n";
-            target.append(msgng.synch_cin(message.view(), true));
+            target.append(msgng.synch_cin(message.str(), true));
             if (target == "/:q")
             {
                 break;
             }
         }
-
         auto host_field = host_address[i] + ":" + port_service[i];
         //Set up an HTTP GET request message
         b_b_http::request<b_b_http::string_body> req{b_b_http::verb::get, target, version};
@@ -164,7 +174,7 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
         if (ec)
         {
             std::string reason = "Error while receiving header of response from resolved IP address with given host_address: "
-+ host_address[i] + ", port_service: " + port_service[i] + ", ";
+                                                                        + host_address[i] + ", port_service: " + port_service[i] + ", ";
             fail_report(ec, reason.c_str());
             break;
         }
@@ -181,12 +191,12 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
             if (ec)
             {
                 std::string reason = "Error while receiving whole response from resolved IP address with given host_address: "
-    + host_address[i] + ", port_service: " + port_service[i] + ", ";
+                                                                        + host_address[i] + ", port_service: " + port_service[i] + ", ";
                 fail_report(ec, reason.c_str());
                 break;
             }
             //Write the message to standard out
-            msgng.synch_cout(res.release(), true);
+            msgng.synch_cout(res.release(), true, "\n");  //True shows, that we want std::cout, not std::cerr (false)
         } else  //Here we have file to load
         {
             b_b_http::response_parser<b_b_http::file_body> res{std::move(res0)};
@@ -199,25 +209,27 @@ void Client_HTTP::do_session(std::vector<std::string>::size_type i, b_a::yield_c
             if (ec)
             {
                 std::string reason = "Error while receiving whole response with file from resolved IP address with given host_address: "
-    + host_address[i] + ", port_service: " + port_service[i] + ", ";
+                                                                        + host_address[i] + ", port_service: " + port_service[i] + ", ";
                 fail_report(ec, reason.c_str());
                 break;
             }
             //Write the message header to standard out
-            msgng.synch_cout(res.get().base(), true);   //True shows, that we want std::cout, not std::cerr (false)
+            msgng.synch_cout(res.get().base(), true, "\n");   //True shows, that we want std::cout, not std::cerr (false)
         }
         target.resize(0);   //Clearing prevoius target
         target.push_back('/');
     }
     if (ec != b_b::error::timeout)
     {
-        std::cout << "Shutting down (" << std::this_thread::get_id() << ")\n";
+        std::stringstream message;
+        message << "Shutting down (" << std::this_thread::get_id() << ")\n";
+        msgng.synch_cout(message.str(), true);
         stream.socket().shutdown(b_a_i_t::socket::shutdown_both, ec);
         //Not_connected happens sometimes so don't bother reporting it
         if (ec && (ec != b_b::errc::not_connected))
         {
             std::string reason = "Error while closing connection to resolved IP address with given host_address: "
-+ host_address[i] + ", port_service: " + port_service[i] + ", ";
+                                                                        + host_address[i] + ", port_service: " + port_service[i] + ", ";
             fail_report(ec, reason.c_str());
         }
     }
@@ -246,7 +258,7 @@ bool Client_HTTP::set_params_file_body_parser(b_b_http::response_parser<b_b_http
     path_to_file = path_to_dwnld_dir / filename;
     if (!std::filesystem::exists(path_to_dwnld_dir))
     {
-        msgng.synch_cout("Download directory doesn't exist, it will be created now", true);
+        msgng.synch_cout("Download directory doesn't exist, it will be created now\n", true);
         std::error_code std_ec;
         std::filesystem::create_directories(path_to_dwnld_dir, std_ec);
         if (std_ec)

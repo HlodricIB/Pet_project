@@ -226,8 +226,6 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
     static auto if_fail = s_h_c->if_fail;
     auto handle_request = std::make_shared<Handle_request>(s_h_c->mime_type, s_h_c->handler, s_h_c->if_fail,
                                                            s_h_c->parser->parsed_info_ptr()[SERVER_NAME], remote_address, remote_port);
-    //For sending messages to fail_report
-    std::string msg;
 #include <boost/asio/yield.hpp>
     reenter(*this)
     {
@@ -240,7 +238,7 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             yield b_b_http::async_read(_stream, _buffer, req, b_b::bind_front_handler(&Session::session_loop, shared_from_this(), false));
             if (ec == b_b_http::error::end_of_stream)
             {
-                msg = "The remote host with IP-address: " + remote_address.to_string() + ", port: "
+                std::string msg = "The remote host with IP-address: " + remote_address.to_string() + ", port: "
                                     + std::to_string(remote_port) + " closed the connection: ";
                 if_fail->fail_report(ec, msg.c_str());
                 break;
@@ -248,7 +246,7 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             }
             if (ec)
             {
-                msg = "Error while reading message from remote host with IP-address: " + remote_address.to_string() + ", port: "
+                std::string msg = "Error while reading message from remote host with IP-address: " + remote_address.to_string() + ", port: "
                                     + std::to_string(remote_port) + " : ";
                 if_fail->fail_report(ec, msg.c_str());
                 break;
@@ -256,7 +254,7 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
             yield handle_request->handle(std::move(req), send_lambda);
             if (ec)
             {
-                msg = "Error while writing response to remote host with IP-address: " + remote_address.to_string() + ", port: "
+                std::string msg = "Error while writing response to remote host with IP-address: " + remote_address.to_string() + ", port: "
                                     + std::to_string(remote_port) + " : ";
                 if_fail->fail_report(ec, msg.c_str());
                 break;
@@ -271,14 +269,14 @@ void Session::session_loop(bool close, boost::system::error_code ec, size_t byte
         }
         if (ec != b_b::error::timeout)
         {
-            msg = "Closing connection with IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port) + " : ";
+            std::string msg = "Closing connection with IP-address: " + remote_address.to_string() + ", port: " + std::to_string(remote_port) + " : ";
             s_h_c->logger->make_record("Closing connection with IP-address: " + remote_address.to_string() + ", port: "
                                         + std::to_string(remote_port) + " : ");
             //Send a TCP shutdown
             _stream.socket().shutdown(b_a_i_t::socket::shutdown_send, ec);
             if (ec)
             {
-                msg = "Error while closing connection with IP-address: " + remote_address.to_string() + ", port: "
+                std::string msg = "Error while closing connection with IP-address: " + remote_address.to_string() + ", port: "
                                     + std::to_string(remote_port) + " : ";
                 if_fail->fail_report(ec, msg.c_str());
                 break;

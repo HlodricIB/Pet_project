@@ -1,0 +1,29 @@
+Thu Nov 17 10:43:22 2022 	pet_project_server starting...
+Thu Nov 17 10:43:22 2022 	Server pet_project_server starts listening port 8080 with IP-address: 0.0.0.0
+Thu Nov 17 10:43:38 2022 	Connected to IP-address: 127.0.0.1, port: 55428
+Thu Nov 17 10:43:38 2022 	Connected to IP-address: 127.0.0.1, port: 41458
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 44198
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 43352
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 51204
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 45098
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 37698
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 40558
+Thu Nov 17 10:43:39 2022 	Connected to IP-address: 127.0.0.1, port: 51478
+Thu Nov 17 10:44:10 2022 	The remote host with IP-address: 127.0.0.1, port: 51204 closed the connection: end of stream
+Thu Nov 17 10:44:10 2022 	Closing connection with IP-address: 127.0.0.1, port: 51204 : 
+Thu Nov 17 10:44:12 2022 	The remote host with IP-address: 127.0.0.1, port: 43352 closed the connection: end of stream
+Thu Nov 17 10:44:12 2022 	Closing connection with IP-address: 127.0.0.1, port: 43352 : 
+Thu Nov 17 10:44:13 2022 	The remote host with IP-address: 127.0.0.1, port: 45098 closed the connection: end of stream
+Thu Nov 17 10:44:13 2022 	Closing connection with IP-address: 127.0.0.1, port: 45098 : 
+Thu Nov 17 10:44:15 2022 	The remote host with IP-address: 127.0.0.1, port: 55428 closed the connection: end of stream
+Thu Nov 17 10:44:15 2022 	Closing connection with IP-address: 127.0.0.1, port: 55428 : 
+Thu Nov 17 10:44:16 2022 	The remote host with IP-address: 127.0.0.1, port: 37698 closed the connection: end of stream
+Thu Nov 17 10:44:16 2022 	Closing connection with IP-address: 127.0.0.1, port: 37698 : 
+Thu Nov 17 10:44:17 2022 	The remote host with IP-address: 127.0.0.1, port: 44198 closed the connection: end of stream
+Thu Nov 17 10:44:17 2022 	Closing connection with IP-address: 127.0.0.1, port: 44198 : 
+Thu Nov 17 10:44:19 2022 	The remote host with IP-address: 127.0.0.1, port: 40558 closed the connection: end of stream
+Thu Nov 17 10:44:19 2022 	Closing connection with IP-address: 127.0.0.1, port: 40558 : 
+Thu Nov 17 10:44:26 2022 	The remote host with IP-address: 127.0.0.1, port: 51478 closed the connection: end of stream
+Thu Nov 17 10:44:26 2022 	Closing connection with IP-address: 127.0.0.1, port: 51478 : 
+Thu Nov 17 10:44:31 2022 	The remote host with IP-address: 127.0.0.1, port: 41458 closed the connection: end of stream
+Thu Nov 17 10:44:31 2022 	Closing connection with IP-address: 127.0.0.1, port: 41458 : 

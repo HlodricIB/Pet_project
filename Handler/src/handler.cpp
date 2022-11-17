@@ -196,7 +196,7 @@ void Server_HTTP_handler::forming_files_table(std::vector<std::string>& req_info
     }
     if (res->get_rows_number() == 0)
     {
-        req_info[REQ_RESULT] = "No files available at that moment";
+        req_info[REQ_RESULT] = "No files available at that moment\n";
         return;
     }
     result_container res_cntnr(res->get_result_container());
@@ -217,7 +217,7 @@ void Server_HTTP_handler::forming_log_table(std::vector<std::string>& req_info)
     }
     if (res->get_rows_number() == 0)
     {
-        req_info[REQ_RESULT] += "Log table have no records at that moment";
+        req_info[REQ_RESULT] += "Log table have no records at that moment\n";
         return;
     }
     result_container res_cntnr(res->get_result_container());
@@ -298,11 +298,15 @@ void Server_HTTP_handler::get_file_URI(std::vector<std::string>& req_info)
     {
        res = res_name;
     } else {
-
         if (handled_name != RESULT_IS_OK && handled_uid == RESULT_IS_OK)
         {
            res = res_uid;
         } else {
+            //Returning back '*' char
+            if (target.back() == '%')
+            {
+                target.back() = '*';
+            }
             req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once";
             return;
         }
@@ -330,6 +334,11 @@ int Server_HTTP_handler::res_handle(std::vector<std::string>& req_info, shared_P
     }
     if (rows_number > 1)
     {
+        //Returning back '*' char
+        if (target.back() == '%')
+        {
+            target.back() = '*';
+        }
         req_info[REQ_ERROR] = "Several files match the requested target(" + target + ") at once";
         return SEVERAL_FILES;
     }
