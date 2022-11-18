@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(Parser_unit_tests LANGUAGES CXX)
 
-add_definitions(-DGTEST_LANGUAGE_CXX11)
+add_definitions(-DGTEST_LANGUAGE_CXX17)
 
 find_package(Threads REQUIRED)
 
@@ -29,16 +29,25 @@ endif ()
 
 set(GTestFiles ${GTestSrc}/src/gtest-all.cc)
 set(GTestIncludes ${GTestSrc} ${GTestSrc}/include)
+set(Parser_SRC /home/nikita/C++/Pet_project/ini_and_parser/src)
+set(Parser_INC /home/nikita/C++/Pet_project/ini_and_parser/include)
 if (NOT ${GMockSrc} STREQUAL "")
     list(APPEND GTestFiles ${GMockSrc}/src/gmock-all.cc)
     list(APPEND GTestIncludes ${GMockSrc} ${GMockSrc}/include)
 endif ()
 
-include_directories(${GTestIncludes} ../include/)
+include_directories(${GTestIncludes} ${Parser_INC})
 
-add_executable(Parser_unit_tests main.cpp tst_parser_unit_tests.cpp tst_parser_unit_tests.h
-               ${GTestFiles})
+add_executable(${PROJECT_NAME}
+    ./src/main.cpp
+    ./src/tst_parser_unit_tests.cpp
+    ./include/tst_parser_unit_tests.h
+    ${GTestFiles}
+)
+
+target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
+
 add_test(NAME Parser_unit_tests COMMAND Parser_unit_tests)
-add_library(Parser STATIC ../src/parser.cpp ../include/parser.h)
-target_link_libraries(Parser_unit_tests PRIVATE Threads::Threads Parser)
+add_library(Parser STATIC ${Parser_SRC}/parser.cpp ${Parser_INC}/parser.h)
+target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads Parser)
 

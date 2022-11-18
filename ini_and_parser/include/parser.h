@@ -58,8 +58,10 @@ public:
     Parser& operator=(const Parser&);
     virtual ~Parser();
     virtual const char* const* parsed_info_ptr(char m = 'k') const { boost::ignore_unused(m); return values; };
-    void display() const;
-    virtual std::pair<bool, std::string_view> validate_parsed() = 0;
+    void display() const;   //Prints contents of parsed arrays via std::cout
+    virtual std::pair<bool, std::string_view> validate_parsed() = 0;    //If checking failed, bool shall contain false and std::string_view with
+                                        //"Parsed count of keywords is less than it needed" message, or std::string_view shall contain first keyword on which the check failed.
+                                        //If checking passed, bool shall contain true and std:string_view will be empty
 };
 
 class Parser_DB : public Parser

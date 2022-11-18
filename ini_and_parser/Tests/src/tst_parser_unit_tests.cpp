@@ -4,7 +4,7 @@
 
 TEST_F(Config_searching_testing, Default_ctor)
 {
-    EXPECT_EQ(std::string(), c_s_default.return_path());
+    EXPECT_EQ(std::string{}, c_s_default.return_path());
 }
 
 TEST_F(Config_searching_testing, C_string_ctor)
@@ -22,9 +22,20 @@ TEST_F(Config_searching_testing, No_path_found)
     EXPECT_THROW(Config_searching("Wrong ini filename"), c_s_exception);
 }
 
-//*******************************************Parser_DB*******************************************
+TEST_F(Config_searching_testing, C_s_exception_message)
+{
+    try {
+        Config_searching("Wrong ini filename");
+    }  catch (c_s_exception e) {
+        EXPECT_STREQ("Wrong ini filename not founded", e.what());
+    }
+}
 
-TEST_F(Parser_DB_testing, Default_ctor)
+//*******************************************Parser*******************************************
+
+TYPED_TEST_SUITE(Parser_testing_default_ctor, Implementations);
+
+/*TEST_F(Parser_DB_testing, Default_ctor)
 {
     Parser_DB default_constructed;
     EXPECT_EQ(nullptr, default_constructed.parsed_info_ptr());
@@ -74,4 +85,4 @@ TEST_F(Parser_DB_testing, Assignment_operator)
 TEST_F(Parser_DB_testing, Parsed_info_ptr)
 {
     EXPECT_EQ(nullptr, parser_constructed.parsed_info_ptr('?'));
-}
+}*/
