@@ -55,6 +55,7 @@ protected:
     void copying_massives(const Parser&);
     std::pair<bool, std::string_view> validate_parsed(const size_t, const char* const[]);
 public:
+    Parser() = default;
     Parser& operator=(const Parser&);
     virtual ~Parser();
     virtual const char* const* parsed_info_ptr(char m = 'k') const { boost::ignore_unused(m); return values; };

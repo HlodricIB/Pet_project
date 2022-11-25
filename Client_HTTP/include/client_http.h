@@ -30,7 +30,7 @@
 namespace client_http
 {
 //An order of char* returned by Parser
-enum
+enum : size_t
 {
     HOST_ADDRESS,
     PORT_SERVICE,

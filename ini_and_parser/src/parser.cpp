@@ -36,7 +36,7 @@ void Config_searching::searching_backward()
 {
     while (true)
     {
-        fs::directory_iterator begin = fs::directory_iterator(fs::current_path());
+        fs::directory_iterator begin = fs::directory_iterator(fs::current_path(), fs::directory_options::skip_permission_denied);
         fs::directory_iterator end = fs::directory_iterator();
         while (begin != end)
         {
@@ -62,7 +62,7 @@ void Config_searching::searching_forward (fs::path& previousDir)
     fs::path currentDir = fs::current_path();
     fs::path upperDir = currentDir / "..";
     fs::path same_Dir = currentDir / ".";
-    fs::directory_iterator begin = fs::directory_iterator(currentDir);
+    fs::directory_iterator begin = fs::directory_iterator(currentDir, fs::directory_options::skip_permission_denied);
     fs::directory_iterator end = fs::directory_iterator();
     while (begin != end)
     {
