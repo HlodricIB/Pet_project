@@ -73,37 +73,37 @@ class Srvr_hlpr_clss
     friend class Session;
     friend class If_fail;
 private:
-    std::shared_ptr<Parser> parser{nullptr};
-    std::shared_ptr<Logger> logger{nullptr};
+    std::shared_ptr<::parser::Parser> parser{nullptr};
+    std::shared_ptr<::logger::Logger> logger{nullptr};
     std::shared_ptr<If_fail> if_fail{nullptr};
     std::shared_ptr<Mime_types> mime_type{nullptr};
-    std::shared_ptr<Handler> handler{nullptr};
+    std::shared_ptr<::handler::Handler> handler{nullptr};
 public:
     Srvr_hlpr_clss() { }
-    explicit Srvr_hlpr_clss(std::shared_ptr<Parser>, bool, bool, bool, bool);   //bool arguments are telling
+    explicit Srvr_hlpr_clss(std::shared_ptr<::parser::Parser>, bool, bool, bool, bool);   //bool arguments are telling
                                                                     //wether appropriate class have to be constructed or not
-    void set_parser(std::shared_ptr<Parser> shrd_ptr) { parser = shrd_ptr; }
-    void set_logger(std::shared_ptr<Logger> shrd_ptr) { logger = shrd_ptr; }
+    void set_parser(std::shared_ptr<::parser::Parser> shrd_ptr) { parser = shrd_ptr; }
+    void set_logger(std::shared_ptr<::logger::Logger> shrd_ptr) { logger = shrd_ptr; }
     void set_if_fail(std::shared_ptr<If_fail> shrd_ptr) { if_fail = shrd_ptr; }
     void set_mime_type(std::shared_ptr<Mime_types> shrd_ptr) { mime_type = shrd_ptr; }
-    void set_handler(std::shared_ptr<Handler> shrd_ptr) { handler = shrd_ptr; }
-    std::shared_ptr<Parser> get_parser() { return parser; }
-    std::shared_ptr<Logger> get_logger() { return logger; }
+    void set_handler(std::shared_ptr<::handler::Handler> shrd_ptr) { handler = shrd_ptr; }
+    std::shared_ptr<::parser::Parser> get_parser() { return parser; }
+    std::shared_ptr<::logger::Logger> get_logger() { return logger; }
     std::shared_ptr<If_fail> get_if_fail() { return if_fail; }
     std::shared_ptr<Mime_types> get_mime_type() { return mime_type; }
-    std::shared_ptr<Handler> get_handler() { return handler; }
+    std::shared_ptr<::handler::Handler> get_handler() { return handler; }
 
 };
 
 class If_fail
 {
 private:
-    std::shared_ptr<Logger> logger{nullptr};
+    std::shared_ptr<::logger::Logger> logger{nullptr};
     mutable std::mutex m;
 public:
     If_fail() { }
     explicit If_fail(std::shared_ptr<Srvr_hlpr_clss> s_h_c): logger(s_h_c->logger) { }
-    explicit If_fail(std::shared_ptr<Logger> logger_ = nullptr): logger(logger_) { }
+    explicit If_fail(std::shared_ptr<::logger::Logger> logger_ = nullptr): logger(logger_) { }
     void fail_report(boost::system::error_code, const char*) const;
 };
 
@@ -179,7 +179,7 @@ class Handle_request
 {
 private:
     std::shared_ptr<Mime_types> mime_type{nullptr};
-    std::shared_ptr<Handler> handler{nullptr};
+    std::shared_ptr<::handler::Handler> handler{nullptr};
     std::shared_ptr<If_fail> if_fail{nullptr};
     b_b::string_view server_name;
     b_a::ip::address remote_address;
@@ -211,7 +211,7 @@ private:
         req_info[REQ_METHOD] = std::string(req_method.data(), req_method.size());
     }
 public:
-    Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<Handler> handler_, std::shared_ptr<If_fail> if_fail_,
+    Handle_request(std::shared_ptr<Mime_types> mime_type_, std::shared_ptr<::handler::Handler> handler_, std::shared_ptr<If_fail> if_fail_,
                    b_b::string_view server_name_, b_a::ip::address remote_address_, port_type remote_port_):
         mime_type(mime_type_), handler(handler_), if_fail(if_fail_), server_name(server_name_), remote_address(remote_address_), remote_port(remote_port_)
     {
@@ -359,7 +359,7 @@ public:
             }
         }
     }
-    void set_handler(std::shared_ptr<Handler> handler_) { handler = handler_; } //Method for changing handler
+    void set_handler(std::shared_ptr<::handler::Handler> handler_) { handler = handler_; } //Method for changing handler
 };
 
 class Session : public b_a::coroutine, public std::enable_shared_from_this<Session>

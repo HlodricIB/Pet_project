@@ -3,8 +3,11 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <cstring>
+#include "boost/optional.hpp"
 #include "parser.h"
 
+namespace parser
+{
 Config_searching::Config_searching(const char* config_to_find_)
 {
     config_to_find = fs::path(config_to_find_);
@@ -66,30 +69,32 @@ void Config_searching::searching_forward (fs::path& previousDir)
     fs::directory_iterator end = fs::directory_iterator();
     while (begin != end)
     {
-        fs::path curr_dir_object = begin->path();
-        if (fs::is_directory(curr_dir_object))
+        if (fs::is_regular_file(begin->path()))
         {
+            fs::path curr_dir_object = begin->path();
+            if (fs::is_directory(curr_dir_object))
+            {
 
-            if (curr_dir_object != upperDir && curr_dir_object != same_Dir && level_down <= 3 && curr_dir_object != previousDir)
-            {
-                ++level_down;
-                fs::current_path(curr_dir_object);
-                searching_forward(previousDir);
-                --level_down;
+                if (curr_dir_object != upperDir && curr_dir_object != same_Dir && level_down <= 3 && curr_dir_object != previousDir)
+                {
+                    ++level_down;
+                    fs::current_path(curr_dir_object);
+                    searching_forward(previousDir);
+                    --level_down;
+                }
             }
-        }
-        else
-        {
-            if (config_founded)
+            else
             {
-                return;
-            }
-
-            if (fs::is_regular_file(curr_dir_object) && (curr_dir_object).filename() == config_to_find)
-            {
-                path = curr_dir_object.string();
-                config_founded = true;
-                return;
+                if (config_founded)
+                {
+                    return;
+                }
+                if ((curr_dir_object).filename() == config_to_find)
+                {
+                    path = curr_dir_object.string();
+                    config_founded = true;
+                    return;
+                }
             }
         }
         ++begin;
@@ -216,16 +221,22 @@ Parser_DB::Parser_DB(const char* config_filename)
     prop_tree::ptree config;
     try {
         prop_tree::ini_parser::read_ini(config_filename, config);
-    }  catch (const prop_tree::ini_parser_error& error) {
+    }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
+        throw error;
     }
     constructing_massives(config);
 }
 
 void Parser_DB::constructing_massives(const prop_tree::ptree& config)
 {
-    const prop_tree::ptree& section_ptree = config.get_child("DB_module");
-    Parser::constructing_massives(section_ptree);
+    boost::optional<const prop_tree::ptree&> section_ptree = config.get_child("DB_module");
+    if (section_ptree)
+    {
+        Parser::constructing_massives(*section_ptree);
+    } else {
+        std::cerr << "No appropriate section (DB_module) in the provided structure" << std::endl;
+    }
 }
 
 Parser_DB::Parser_DB(const Parser_DB& p)
@@ -275,7 +286,7 @@ Parser_Inotify::Parser_Inotify(const char* config_filename)
     prop_tree::ptree config;
     try {
         prop_tree::ini_parser::read_ini(config_filename, config);
-    }  catch (const prop_tree::ini_parser_error& error) {
+    }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
     }
     constructing_massives(config);
@@ -289,8 +300,13 @@ Parser_Inotify::Parser_Inotify(const Parser_Inotify& p)
 
 void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
 {
-    const prop_tree::ptree& section_ptree = config.get_child("Inotify_module");
-    Parser::constructing_massives(section_ptree);
+    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Inotify_module");
+    if (section_ptree)
+    {
+        Parser::constructing_massives(*section_ptree);
+    } else {
+        std::cerr << "No appropriate section (Inotify_module) in the provided structure" << std::endl;
+    }
 }
 
 std::pair<bool, std::string_view> Parser_Inotify::validate_parsed()
@@ -308,7 +324,7 @@ Parser_Server_HTTP::Parser_Server_HTTP(const char* config_filename)
     prop_tree::ptree config;
     try {
         prop_tree::ini_parser::read_ini(config_filename, config);
-    }  catch (const prop_tree::ini_parser_error& error) {
+    }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
     }
     constructing_massives(config);
@@ -322,8 +338,13 @@ Parser_Server_HTTP::Parser_Server_HTTP(const Parser_Server_HTTP& p)
 
 void Parser_Server_HTTP::constructing_massives(const prop_tree::ptree& config)
 {
-    const prop_tree::ptree& section_ptree = config.get_child("Server_HTTP");
-    Parser::constructing_massives(section_ptree);
+    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Server_HTTP");
+    if (section_ptree)
+    {
+        Parser::constructing_massives(*section_ptree);
+    } else {
+        std::cerr << "No appropriate section (Server_HTTP) in the provided structure" << std::endl;
+    }
 }
 
 std::pair<bool, std::string_view> Parser_Server_HTTP::validate_parsed()
@@ -341,7 +362,7 @@ Parser_Client_HTTP::Parser_Client_HTTP(const char* config_filename)
     prop_tree::ptree config;
     try {
         prop_tree::ini_parser::read_ini(config_filename, config);
-    }  catch (const prop_tree::ini_parser_error& error) {
+    }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
     }
     constructing_massives(config);
@@ -355,11 +376,17 @@ Parser_Client_HTTP::Parser_Client_HTTP(const Parser_Client_HTTP& p)
 
 void Parser_Client_HTTP::constructing_massives(const prop_tree::ptree& config)
 {
-    const prop_tree::ptree& section_ptree = config.get_child("Client_HTTP");
-    Parser::constructing_massives(section_ptree);
+    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Client_HTTP");
+    if (section_ptree)
+    {
+        Parser::constructing_massives(*section_ptree);
+    } else {
+        std::cerr << "No appropriate section (Client_HTTP) in the provided structure" << std::endl;
+    }
 }
 
 std::pair<bool, std::string_view> Parser_Client_HTTP::validate_parsed()
 {
     return Parser::validate_parsed(expected_count, expected);
 }
+}   //namespace parser

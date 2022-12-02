@@ -1,8 +1,9 @@
 #include <functional>
 #include <algorithm>
-//#include <boost/beast/core/string_type.hpp>
 #include "handler.h"
 
+namespace handler
+{
 bool Inotify_DB_handler::handle(std::vector<std::string>& arguments)
 {
     std::string command;
@@ -73,7 +74,9 @@ void Inotify_DB_handler::exec_command(const std::string& command)
     return;
 }
 
-Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, std::shared_ptr<Logger> logger_, int days_limit_,
+using namespace db_module;
+
+Server_HTTP_handler::Server_HTTP_handler(std::shared_ptr<DB_module> DB_ptr_, std::shared_ptr<::logger::Logger> logger_, int days_limit_,
                                          int rows_limit_): DB_ptr(DB_ptr_), logger(logger_),
                                                             days_limit(days_limit_), rows_limit(rows_limit_)
 {
@@ -513,3 +516,4 @@ bool Server_dir_handler::handle(std::vector<std::string>& req_info) //First elem
         return true;    //Shows that we have request for file
     }
 }
+}   //namespace handler

@@ -4,6 +4,8 @@
 #include <climits>
 #include "DB_module.h"
 
+namespace db_module
+{
 //*******************************************DB_module*******************************************
 size_t DB_module::conns_threads_count() const
 {
@@ -11,6 +13,8 @@ size_t DB_module::conns_threads_count() const
     //return thread_count > 0 ? (thread_count * 2) : 1;  //Amount of PGconn* and threads
     return thread_count > 0 ? thread_count : 1;  //Amount of PGconn* and threads
 }
+
+using namespace parser;
 
 DB_module::DB_module(std::shared_ptr<Parser> p_DB)
 {
@@ -357,5 +361,5 @@ bool PG_result::res_succeed() const
 {
     return success;
 }
-
+}   //namespace db_module
 

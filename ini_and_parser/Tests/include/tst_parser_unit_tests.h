@@ -8,19 +8,31 @@
 namespace parser_unit_tests
 {
 extern const char* valid_path_to_ini_file;
+extern const char* wrong_path_to_ini_file;
 
-class Config_searching_testing : public testing::Test
+using namespace ::parser;
+
+//*******************************************Config_searching*******************************************
+
+class ConfigSearchingTesting : public ::testing::Test
 {
 protected:
+    void SetUp() override
+    {
+        ASSERT_NO_THROW(c_s_c_string = Config_searching{"pet_project_config.ini"});
+        ASSERT_NO_THROW(c_s_std_string = Config_searching{std::string("pet_project_config.ini")});
+    }
     Config_searching c_s_default;
-    Config_searching c_s_c_string{"pet_project_config.ini"};
-    Config_searching c_s_std_string{std::string("pet_project_config.ini")};
+    Config_searching c_s_c_string;
+    Config_searching c_s_std_string;
 };
 
-//Parameterizing by type
+//*******************************************Parser*******************************************
+
 template<class T>
 std::shared_ptr<Parser> create_parser(const char* path_c_string = nullptr, std::string path_std_string = std::string{})
 {
+    std::shared_ptr<Parser> parser{nullptr};
     if (path_c_string != nullptr && path_std_string.empty())
     {
         return std::make_shared<T>(path_c_string);
@@ -80,9 +92,12 @@ enum p_Client_HTTP : size_t
 };
 
 template<class T>
+void values_checking(const char* const*);
+
+template<class T>
 void keys_checking(const char* const* ptr_k)
 {
-    EXPECT_EQ(nullptr, ptr_k);
+    values_checking<T>(ptr_k);
 }
 
 template<>
@@ -97,9 +112,6 @@ void keys_checking<Parser_DB>(const char* const* ptr_k)
     EXPECT_STREQ("client_encoding", ptr_k[CLIENT_ENCODING]);
     EXPECT_STREQ("sslmode", ptr_k[SSLMODE]);
 }
-
-template<class T>
-void values_checking(const char* const*);
 
 template<>
 void values_checking<Parser_DB>(const char* const* ptr_v)
@@ -151,13 +163,15 @@ void values_checking<Parser_Client_HTTP>(const char* const* ptr_v)
 }
 
 template<class T>
-class Parser_testing : public testing::Test
+class ParserTesting : public ::testing::Test
 {
 protected:
     std::shared_ptr<Parser> parser{nullptr};
-    Parser_testing(const char* path_c_string = nullptr, std::string path_std_string = std::string{}):
-                                                                        parser(create_parser<T>(path_c_string, path_std_string)) { };
-    ~Parser_testing() override { }
+    ParserTesting(const char* path_c_string = nullptr, std::string path_std_string = std::string{}):
+                                                                        parser(create_parser<T>(path_c_string, path_std_string)) { }
+    ParserTesting(const prop_tree::ptree& config): parser(std::make_shared<T>(config)) { }
+
+    ~ParserTesting() override { }
     void keys_values_checking()
     {
         //Keys checking
@@ -176,77 +190,57 @@ protected:
 };
 
 template<class T>
-class Parser_default_ctor : public Parser_testing<T>
+class ParserDefaultCtor : public ParserTesting<T>
 {
 protected:
-    Parser_default_ctor(): Parser_testing<T>() { }
+    ParserDefaultCtor(): ParserTesting<T>() { }
 };
 
 template<class T>
-class Parser_C_string_ctor : public Parser_testing<T>
+class ParserCStringCtor : public ParserTesting<T>
 {
 protected:
-    Parser_C_string_ctor(): Parser_testing<T>(valid_path_to_ini_file) { }
+    ParserCStringCtor(): ParserTesting<T>(valid_path_to_ini_file) { }
 };
 
 template<class T>
-class Parser_std_string_ctor : public Parser_testing<T>
+class ParserStdStringCtor : public ParserTesting<T>
 {
 protected:
-    Parser_std_string_ctor(): Parser_testing<T>(nullptr, std::string{valid_path_to_ini_file}) { }
+    ParserStdStringCtor(): ParserTesting<T>(nullptr, std::string{valid_path_to_ini_file}) { }
 };
 
-using ::testing::Types;
-
-typedef Types<Parser_DB, Parser_Inotify, Parser_Server_HTTP, Parser_Client_HTTP> Implementations;
-
-TYPED_TEST_SUITE(Parser_default_ctor, Implementations);
-TYPED_TEST_SUITE(Parser_C_string_ctor, Implementations);
-TYPED_TEST_SUITE(Parser_std_string_ctor, Implementations);
-
-
-/*class Parser_DB_testing : public testing::Test
+template<class T>
+class ParserWrongIniFileCtor : public ::testing::Test
 {
 protected:
-    Parser_DB parser_constructed{"/home/nikita/C++/Pet_project/ini_and_parser/pet_project_config.ini"};
-    void keys_checking(const char* const* ptr_k)
+    void SetUp() override
     {
-        EXPECT_STREQ("host", ptr_k[0]);
-        EXPECT_STREQ("hostaddr", ptr_k[1]);
-        EXPECT_STREQ("port", ptr_k[2]);
-        EXPECT_STREQ("dbname", ptr_k[3]);
-        EXPECT_STREQ("password", ptr_k[4]);
-        EXPECT_STREQ("connect_timeout", ptr_k[5]);
-        EXPECT_STREQ("client_encoding", ptr_k[6]);
-        EXPECT_STREQ("sslmode", ptr_k[7]);
+        EXPECT_THROW(T{wrong_path_to_ini_file}, prop_tree::ptree_error);
     }
-    void values_checking(const char* const* ptr_v)
-    {
-        EXPECT_STREQ("localhost", ptr_v[0]);
-        EXPECT_STREQ("127.0.0.1", ptr_v[1]);
-        EXPECT_STREQ("5432", ptr_v[2]);
-        EXPECT_STREQ("pet_project_db", ptr_v[3]);
-        EXPECT_STREQ("pet_project_password", ptr_v[4]);
-        EXPECT_STREQ("", ptr_v[5]);
-        EXPECT_STREQ("auto", ptr_v[6]);
-        EXPECT_STREQ("prefer", ptr_v[7]);
+};
+
+//To test const prop_tree::ptree& ctors we need one more function to get prop_tree::ptree
+const prop_tree::ptree parse_ini(const char* path_to_ini_file)
+{
+    boost::property_tree::ptree config;
+    try {
+        boost::property_tree::ini_parser::read_ini(path_to_ini_file, config);
+    }  catch (const prop_tree::ini_parser_error& error) {
+        std::cerr << error.what() << std::endl;
     }
-    void p_DB_checking(const Parser_DB& p_DB)
-    {
-        //Keys checking
-        const char* const* ptr_ = p_DB.parsed_info_ptr();
-        keys_checking(ptr_);
-        const char* const* ptr_k = p_DB.parsed_info_ptr('k');
-        keys_checking(ptr_k);
-        const char* const* ptr_K = p_DB.parsed_info_ptr('K');
-        keys_checking(ptr_K);
-        //Values checking
-        const char* const* ptr_v = p_DB.parsed_info_ptr('v');
-        values_checking(ptr_v);
-        const char* const* ptr_V = p_DB.parsed_info_ptr('v');
-        values_checking(ptr_V);
-    }
-};*/
+    return config;
+}
+
+template<class T>
+class ParserPropTreeCtor : public ParserTesting<T>
+{
+private:
+    prop_tree::ptree config{parse_ini(valid_path_to_ini_file)};
+protected:
+    ParserPropTreeCtor(): ParserTesting<T>(config) { }
+};
+
 }   //namespace parser_unit_tests
 
 #endif // TST_PARSER_UNIT_TESTS_H

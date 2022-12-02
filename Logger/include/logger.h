@@ -7,6 +7,8 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/io_context.hpp>
 
+namespace logger
+{
 class Logger
 {
 private:
@@ -48,5 +50,6 @@ public:
     void set_strand(boost::asio::io_context& ioc) { _strand = boost::asio::make_strand(ioc.get_executor()); }   //We can assign strand objects, operator= for strand objects is not deprecated
     void make_record(const std::string&) override;
 };
+}   //logger
 
 #endif // LOGGER_H

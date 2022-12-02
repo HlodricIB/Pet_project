@@ -27,6 +27,9 @@ b_b::string_view Audio_mime_type::mime_type(b_b::string_view target)
     return "application/octet-stream";
 }
 
+using namespace parser;
+using namespace logger;
+
 Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger, bool bool_if_fail,
                                bool bool_mime_type, bool bool_handler): parser(parser_)
 {
@@ -53,7 +56,7 @@ Srvr_hlpr_clss::Srvr_hlpr_clss(std::shared_ptr<Parser> parser_, bool bool_logger
     if (bool_handler)
     {
         //Only if you want handler that works directly with dir, in other cases should use set_handler function
-        handler = std::make_shared<Server_dir_handler>(parser_->parsed_info_ptr()[FILES_FOLDER]);
+        handler = std::make_shared<::handler::Server_dir_handler>(parser_->parsed_info_ptr()[FILES_FOLDER]);
     }
 }
 

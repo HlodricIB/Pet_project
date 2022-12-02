@@ -7,6 +7,8 @@
 
 namespace inotify_module
 {
+using namespace logger;
+
 Inotify_module::Inotify_module(const std::string& files_folder_, const std::string& logs_folder)
 {
     arguments[FILES_FOLDER] = files_folder_;
@@ -157,7 +159,7 @@ void Inotify_module::set_folder(std::string folder, bool add_logger)
     create_inotify();
 }
 
-void Inotify_module::set_handler(std::shared_ptr<Handler> handler_)
+void Inotify_module::set_handler(std::shared_ptr<::handler::Handler> handler_)
 {
     handler = handler_;
 }

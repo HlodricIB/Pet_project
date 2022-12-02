@@ -14,6 +14,8 @@
 #include "libpq-fe.h"
 #include "parser.h"
 
+namespace db_module
+{
 class connection_pool
 {
 private:
@@ -22,7 +24,7 @@ private:
     int conns_established{0};
     void make_connections(size_t conn_count, std::function<PGconn*()>);
 public:
-    connection_pool(size_t, std::shared_ptr<Parser> parser);   //First argument is for setting number of connections to open
+    connection_pool(size_t, std::shared_ptr<::parser::Parser> parser);   //First argument is for setting number of connections to open
     explicit connection_pool(size_t = 1, const char* conninfo = "dbname = pet_project_db");    //First argument is for setting number of connections to open
     connection_pool(const connection_pool&) = delete;
     connection_pool& operator=(const connection_pool&) = delete;
@@ -127,7 +129,7 @@ private:
     shared_PG_result async_command_execution(const char*) const;
     size_t conns_threads_count() const;
 public:
-    explicit DB_module(std::shared_ptr<Parser>);
+    explicit DB_module(std::shared_ptr<::parser::Parser>);
     explicit DB_module(const char* conninfo = "dbname = pet_project_db");
     DB_module(std::shared_ptr<connection_pool> c_pool, std::shared_ptr<thread_pool> t_pool): conns(c_pool), threads(t_pool) { }   // If want to use our own created connection and thread pools with specified connections and threads amount
     ~DB_module() { };
@@ -135,6 +137,6 @@ public:
     std::pair<int, int> conns_threads_amount() const;
     void warming_connections(const std::string& DB_name, const std::vector<std::string>& tables) { conns->warm(DB_name, tables); } //Function for "warming up" (filling cache for DB) established connections in connection pool, first argument is DB name to "warming up", second is table for "warming up"
 };
-
+}   //namespace db_module
 
 #endif // DB_MODULE_H

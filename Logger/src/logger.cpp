@@ -6,6 +6,8 @@
 #include <vector>
 #include "logger.h"
 
+namespace logger
+{
 Logger::Logger(const std::string& service_, const std::string& log_dir, std::uintmax_t size): service(service_), max_log_file_size(size)
 {
     open_file(log_dir);
@@ -118,3 +120,4 @@ void Logger_srvr_http::make_record(const std::string& event)
         f_stream << std::put_time(std::localtime(&now_time_t), "%c \t") << event << "\n" << std::flush;
     });
 }
+}   //logger

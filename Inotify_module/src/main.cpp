@@ -4,6 +4,9 @@
 
 int main()
 {
+    using namespace parser;
+    using namespace db_module;
+    using namespace handler;
     Config_searching config("pet_project_config.ini");
     std::shared_ptr<Parser> parser_DB_shrd_ptr = std::make_shared<Parser_DB>(config);
     std::shared_ptr<Parser> parser_inotify_shrd_ptr = std::make_shared<Parser_Inotify>(config);

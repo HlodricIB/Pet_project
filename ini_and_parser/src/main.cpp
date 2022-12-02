@@ -3,6 +3,7 @@
 
 int main(int argc, char *argv[])
 {
+    using namespace parser;
     std::shared_ptr<Parser> parser_db = std::make_shared<Parser_DB>();
     std::shared_ptr<Parser> parser_inotify = std::make_shared<Parser_Inotify>();
     std::shared_ptr<Parser> parser_server_http = std::make_shared<Parser_Server_HTTP>();
