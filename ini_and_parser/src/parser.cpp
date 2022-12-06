@@ -14,12 +14,6 @@ Config_searching::Config_searching(const char* config_to_find_)
     searching_begin();
 }
 
-Config_searching::Config_searching(const std::string config_to_find_)
-{
-    config_to_find = fs::path(config_to_find_);
-    searching_begin();
-}
-
 void Config_searching::searching_begin()
 {
     fs::path previousDir;
@@ -197,7 +191,7 @@ void Parser::display() const
 
 std::pair<bool, std::string_view> Parser::validate_parsed(const size_t expected_count, const char* const expected[])
 {
-    if (size_char_ptr_ptr > expected_count)
+    if (size_char_ptr_ptr < expected_count)
     {
         return std::make_pair(false, std::string_view("Parsed count of keywords is less than it needed"));
     }
@@ -230,7 +224,7 @@ Parser_DB::Parser_DB(const char* config_filename)
 
 void Parser_DB::constructing_massives(const prop_tree::ptree& config)
 {
-    boost::optional<const prop_tree::ptree&> section_ptree = config.get_child("DB_module");
+    boost::optional<const prop_tree::ptree&> section_ptree = config.get_child_optional("DB_module");
     if (section_ptree)
     {
         Parser::constructing_massives(*section_ptree);
@@ -273,7 +267,8 @@ std::pair<bool, std::string_view> Parser_DB::validate_parsed()
     {
         return std::make_pair(true, std::string_view());
     }
-    return std::make_pair(true, std::string_view("No data was parsed, may be because there is no appropriate information to parse in ini-file"));
+    return std::make_pair(false, std::string_view("No data was parsed, may be because there is no appropriate information to "
+                                                                                                                "parse in ini-file"));
 }
 
 Parser_Inotify::Parser_Inotify(const prop_tree::ptree& config)
@@ -288,6 +283,7 @@ Parser_Inotify::Parser_Inotify(const char* config_filename)
         prop_tree::ini_parser::read_ini(config_filename, config);
     }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
+        throw error;
     }
     constructing_massives(config);
 }
@@ -300,7 +296,7 @@ Parser_Inotify::Parser_Inotify(const Parser_Inotify& p)
 
 void Parser_Inotify::constructing_massives(const prop_tree::ptree& config)
 {
-    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Inotify_module");
+    boost::optional<const prop_tree::ptree&> section_ptree = config.get_child_optional("Inotify_module");
     if (section_ptree)
     {
         Parser::constructing_massives(*section_ptree);
@@ -326,6 +322,7 @@ Parser_Server_HTTP::Parser_Server_HTTP(const char* config_filename)
         prop_tree::ini_parser::read_ini(config_filename, config);
     }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
+        throw error;
     }
     constructing_massives(config);
 }
@@ -338,7 +335,7 @@ Parser_Server_HTTP::Parser_Server_HTTP(const Parser_Server_HTTP& p)
 
 void Parser_Server_HTTP::constructing_massives(const prop_tree::ptree& config)
 {
-    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Server_HTTP");
+    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child_optional("Server_HTTP");
     if (section_ptree)
     {
         Parser::constructing_massives(*section_ptree);
@@ -364,6 +361,7 @@ Parser_Client_HTTP::Parser_Client_HTTP(const char* config_filename)
         prop_tree::ini_parser::read_ini(config_filename, config);
     }  catch (const prop_tree::ptree_error& error) {
         std::cerr << error.what() << std::endl;
+        throw error;
     }
     constructing_massives(config);
 }
@@ -376,7 +374,7 @@ Parser_Client_HTTP::Parser_Client_HTTP(const Parser_Client_HTTP& p)
 
 void Parser_Client_HTTP::constructing_massives(const prop_tree::ptree& config)
 {
-    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child("Client_HTTP");
+    boost::optional< const prop_tree::ptree&> section_ptree = config.get_child_optional("Client_HTTP");
     if (section_ptree)
     {
         Parser::constructing_massives(*section_ptree);

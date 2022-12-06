@@ -9,6 +9,8 @@ namespace parser_unit_tests
 {
 extern const char* valid_path_to_ini_file;
 extern const char* wrong_path_to_ini_file;
+extern const char* path_to_ini_file_less;
+extern const char* path_to_ini_file_wrong_key_name;
 
 using namespace ::parser;
 
@@ -169,9 +171,16 @@ protected:
     std::shared_ptr<Parser> parser{nullptr};
     ParserTesting(const char* path_c_string = nullptr, std::string path_std_string = std::string{}):
                                                                         parser(create_parser<T>(path_c_string, path_std_string)) { }
-    ParserTesting(const prop_tree::ptree& config): parser(std::make_shared<T>(config)) { }
 
     ~ParserTesting() override { }
+    void default_initialized()
+    {
+        EXPECT_EQ(nullptr, parser->parsed_info_ptr());
+        EXPECT_EQ(nullptr, parser->parsed_info_ptr('k'));
+        EXPECT_EQ(nullptr, parser->parsed_info_ptr('v'));
+        EXPECT_EQ(nullptr, parser->parsed_info_ptr('K'));
+        EXPECT_EQ(nullptr, parser->parsed_info_ptr('V'));
+    }
     void keys_values_checking()
     {
         //Keys checking
@@ -236,11 +245,63 @@ template<class T>
 class ParserPropTreeCtor : public ParserTesting<T>
 {
 private:
-    prop_tree::ptree config{parse_ini(valid_path_to_ini_file)};
+    prop_tree::ptree config;
 protected:
-    ParserPropTreeCtor(): ParserTesting<T>(config) { }
+    void SetUp() override
+    {
+        //Testing prop_tree::ptree with no information
+        std::shared_ptr<Parser> parser = std::make_shared<T>(config);
+        this->default_initialized();
+        //Filling config with appropriate information
+        ASSERT_NO_THROW(config = parse_ini(valid_path_to_ini_file));
+        parser = std::make_shared<T>(config);
+        ParserTesting<T>::parser = parser;
+    }
 };
 
+template<class T>
+class ParserConfigSearchingCtor : public ParserTesting<T>
+{
+private:
+    Config_searching c_s;
+protected:
+    void SetUp() override
+    {
+        fs::current_path("/home/nikita/C++/Pet_project/ini_and_parser/Tests/");
+        ASSERT_NO_THROW(c_s = Config_searching{"pet_project_config.ini"});
+        std::shared_ptr<Parser> parser = std::make_shared<T>(c_s);
+        ParserTesting<T>::parser = parser;
+    }
+};
+
+template<class T>
+class ParserCopyCtor : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        T origin{valid_path_to_ini_file};
+        T copied(origin);
+        const char* const* ptr_k = copied.parsed_info_ptr('k');
+        keys_checking<T>(ptr_k);
+        const char* const* ptr_v = copied.parsed_info_ptr('v');
+        values_checking<T>(ptr_v);
+    }
+};
+
+template<class T>
+class ParserValidateLess : public ParserTesting<T>
+{
+protected:
+    ParserValidateLess(): ParserTesting<T>(path_to_ini_file_less) { }
+};
+
+template<class T>
+class ParserValidateWrongKeyName : public ParserTesting<T>
+{
+protected:
+    ParserValidateWrongKeyName(): ParserTesting<T>(path_to_ini_file_wrong_key_name) { }
+};
 }   //namespace parser_unit_tests
 
 #endif // TST_PARSER_UNIT_TESTS_H

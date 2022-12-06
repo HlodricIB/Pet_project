@@ -40,7 +40,7 @@ private:
 public:
     Config_searching() { }
     explicit Config_searching(const char*);
-    explicit Config_searching(const std::string config_to_find_);
+    explicit Config_searching(const std::string config_to_find_): Config_searching(config_to_find_.c_str()) { }
     std::string return_path() const { return path; }
 };
 
@@ -77,7 +77,7 @@ public:
     explicit Parser_DB(const char*);    //May throw prop_tree::ptree_error
     explicit Parser_DB(const std::string config_filename): Parser_DB(config_filename.c_str()) { }    //May throw prop_tree::ptree_error
     explicit Parser_DB(const prop_tree::ptree&);
-    explicit Parser_DB(const Config_searching& c_s): Parser_DB(c_s.return_path().c_str()) { }   //Not tested yet!!!!
+    explicit Parser_DB(const Config_searching& c_s): Parser_DB(c_s.return_path().c_str()) { }
     explicit Parser_DB(const Parser_DB&);
     //~Parser_DB() override { };
     const char* const* parsed_info_ptr(char m = 'k') const override;
@@ -95,7 +95,7 @@ public:
     explicit Parser_Inotify(const char*);    //May throw prop_tree::ptree_error
     explicit Parser_Inotify(const std::string& config_filename): Parser_Inotify(config_filename.c_str()) { }    //May throw prop_tree::ptree_error
     explicit Parser_Inotify(const prop_tree::ptree&);
-    explicit Parser_Inotify(const Config_searching& c_s): Parser_Inotify(c_s.return_path().c_str()) { } //Not tested yet!!!
+    explicit Parser_Inotify(const Config_searching& c_s): Parser_Inotify(c_s.return_path().c_str()) { }
     explicit Parser_Inotify(const Parser_Inotify&);
     //~Parser_Inotify() override { };
     std::pair<bool, std::string_view> validate_parsed() override;
@@ -113,7 +113,7 @@ public:
     explicit Parser_Server_HTTP(const char*);    //May throw prop_tree::ptree_error
     explicit Parser_Server_HTTP(const std::string& config_filename): Parser_Server_HTTP(config_filename.c_str()) { }    //May throw prop_tree::ptree_error
     explicit Parser_Server_HTTP(const prop_tree::ptree&);
-    explicit Parser_Server_HTTP(const Config_searching& c_s): Parser_Server_HTTP(c_s.return_path().c_str()) { } //Not tested yet!!!
+    explicit Parser_Server_HTTP(const Config_searching& c_s): Parser_Server_HTTP(c_s.return_path().c_str()) { }
     explicit Parser_Server_HTTP(const Parser_Server_HTTP&);
     //~Parser_Server_HTTP() override { };
     std::pair<bool, std::string_view> validate_parsed() override;
@@ -131,7 +131,7 @@ public:
     explicit Parser_Client_HTTP(const char*);    //May throw prop_tree::ptree_error
     explicit Parser_Client_HTTP(const std::string& config_filename): Parser_Client_HTTP(config_filename.c_str()) { }    //May throw prop_tree::ptree_error
     explicit Parser_Client_HTTP(const prop_tree::ptree&);
-    explicit Parser_Client_HTTP(const Config_searching& c_s): Parser_Client_HTTP(c_s.return_path().c_str()) { } //Not tested yet!!!
+    explicit Parser_Client_HTTP(const Config_searching& c_s): Parser_Client_HTTP(c_s.return_path().c_str()) { }
     explicit Parser_Client_HTTP(const Parser_Client_HTTP&);
     //~Parser_Client_HTTP() override { };
     std::pair<bool, std::string_view> validate_parsed() override;
