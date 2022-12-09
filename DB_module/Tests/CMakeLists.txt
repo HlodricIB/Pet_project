@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.5)
 
 project(DB_module_unit_tests LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 add_definitions(-DGTEST_LANGUAGE_CXX17)
 
 find_package(Threads REQUIRED)
@@ -30,17 +33,27 @@ endif ()
 
 set(GTestFiles ${GTestSrc}/src/gtest-all.cc)
 set(GTestIncludes ${GTestSrc} ${GTestSrc}/include)
+set(Parser_INC ../../ini_and_parser/include)
+set(DB_module_SRC ../src)
+set(DB_module_INC ../include)
 if (NOT ${GMockSrc} STREQUAL "")
     list(APPEND GTestFiles ${GMockSrc}/src/gmock-all.cc)
     list(APPEND GTestIncludes ${GMockSrc} ${GMockSrc}/include)
 endif ()
 
-include_directories(${GTestIncludes} ../include /home/nikita/C++/Pet_project/ini_and_parser/include/)
+include_directories(${GTestIncludes} ${DB_module_INC} ${Parser_INC})
 
-add_executable(DB_module_unit_tests main.cpp tst_db_module_unit_tests.cpp tst_db_module_unit_tests.h
-               ${GTestFiles})
-add_test(NAME DB_module_unit_tests COMMAND DB_module_unit_tests)
-add_library(DB_module STATIC ../src/DB_module.cpp ../include/DB_module.h)
+add_executable(${PROJECT_NAME}
+    ./src/main.cpp
+    ./src/tst_db_module_unit_tests.cpp
+    ./include/tst_db_module_unit_tests.h
+    ${GTestFiles}
+)
+
+target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
+
+add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
+add_library(DB_module STATIC ${DB_module_SRC}/DB_module.cpp ${DB_module_INC}/DB_module.h)
 target_link_libraries(DB_module PRIVATE PostgreSQL::PostgreSQL)
-target_link_libraries(DB_module_unit_tests PRIVATE Threads::Threads PostgreSQL::PostgreSQL DB_module)
+target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads PostgreSQL::PostgreSQL DB_module)
 

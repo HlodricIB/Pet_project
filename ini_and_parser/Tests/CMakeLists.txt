@@ -32,8 +32,8 @@ endif ()
 
 set(GTestFiles ${GTestSrc}/src/gtest-all.cc)
 set(GTestIncludes ${GTestSrc} ${GTestSrc}/include)
-set(Parser_SRC /home/nikita/C++/Pet_project/ini_and_parser/src)
-set(Parser_INC /home/nikita/C++/Pet_project/ini_and_parser/include)
+set(Parser_SRC ../src)
+set(Parser_INC ../include)
 if (NOT ${GMockSrc} STREQUAL "")
     list(APPEND GTestFiles ${GMockSrc}/src/gmock-all.cc)
     list(APPEND GTestIncludes ${GMockSrc} ${GMockSrc}/include)
@@ -49,6 +49,6 @@ add_executable(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
 
-add_test(NAME Parser_unit_tests COMMAND Parser_unit_tests)
+add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 add_library(Parser STATIC ${Parser_SRC}/parser.cpp ${Parser_INC}/parser.h)
 target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads Parser)

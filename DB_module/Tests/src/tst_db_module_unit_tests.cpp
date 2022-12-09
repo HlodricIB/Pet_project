@@ -1,9 +1,14 @@
 #include "tst_db_module_unit_tests.h"
 
+namespace db_module_unit_tests
+{
 MockParser::MockParser()
 {
     ON_CALL(*this, parsed_info_ptr(_))
             .WillByDefault(Return(nullptr));
+
+    ON_CALL(*this, validate_parsed())
+            .WillByDefault(Return(std::make_pair(false, "")));
 }
 
 const char* const* MockParserHelper::returning_massives(char m) const
@@ -27,10 +32,10 @@ const char* const* MockParserHelper::returning_massives_no_conns(char m) const
     switch (m)
     {
     case 'k':
-        return k_no_conns;
+        return k_not_valid;
         break;
     case 'v':
-        return v_no_conns;
+        return v_not_valid;
     default:
         return nullptr;
         break;
@@ -39,9 +44,39 @@ const char* const* MockParserHelper::returning_massives_no_conns(char m) const
 
 //*******************************************connection_pool testing*******************************************
 
-connection_pool connection_pool_testing::c_p_dft_conninfo{4};
+TEST_F(ConnectionPoolTesting, DefaultCtor)
+{
+    ASSERT_EQ(default_constructed.conns_amount(), 1);
+    check_conns(default_constructed.conns_amount(), default_constructed);
+}
 
-TEST_F(connection_pool_testing, Parser_ctor)
+TEST_F(ConnectionPoolTesting, ConninfoCtorOneArgument)
+{
+    ASSERT_EQ(zero_connections.conns_amount(), 0);
+    EXPECT_FALSE(zero_connections.pull_connection(conn));
+
+    const int num_conns = 5;
+    connection_pool c_p{num_conns};
+    ASSERT_EQ(c_p, num_conns);
+    check_conns(num_conns, c_p);
+}
+
+TEST_F(ConnectionPoolTesting, ConninfoCtorBothArguments)
+{
+    for (size_t i = 2; i < 5; i+=2)
+    {
+        connection_pool c_p{i, "dbname = pet_project_db"};
+        ASSERT_EQ(c_p, i);
+        check_conns(i, c_p);
+    }
+
+    //Check conninfo ctor with wrong second (conninfo) argument
+    connection_pool c_p{9, "dbname = wrong_db_name"};
+    ASSERT_EQ(c_p, 0);
+    EXPECT_FALSE(c_p.pull_connection(conn));
+}
+
+TEST_F(ConnectionPoolTesting, ParserCtor)
 {
     MockParserHelper mock_parser_helper;
     std::shared_ptr<Parser> mock_parser_shared_ptr = std::make_shared<MockParser>();
@@ -63,40 +98,7 @@ TEST_F(connection_pool_testing, Conns_amount)
     EXPECT_EQ(4, c_p_dft_conninfo.conns_amount());
 }
 
-TEST_F(connection_pool_testing, Conninfo_ctor_defaulted_args)
-{
-    connection_pool c_p;
-    EXPECT_EQ(1, c_p.conns_amount());
-    n_e(c_p.conns_amount(), c_p);
-    pull_conns(c_p.conns_amount(), c_p);
 
-    //Conninfo ctor with one specified argument, which is number of connections (equal to 0)
-    EXPECT_FALSE(static_cast<bool>(c_p_zero.conns_amount()));
-    EXPECT_FALSE(c_p_zero.pull_connection(conn));
-
-    ASSERT_TRUE(static_cast<bool>(c_p_dft_conninfo.conns_amount()));
-    EXPECT_EQ(4, c_p_dft_conninfo.conns_amount());
-    n_e(c_p_dft_conninfo.conns_amount());
-    pull_conns(c_p_dft_conninfo.conns_amount());
-}
-
-TEST_F(connection_pool_testing, Conninfo_ctor)
-{
-    {
-        connection_pool c_p_conninfo{4, true, "dbname = pet_project_db"};
-        ASSERT_TRUE(static_cast<bool>(c_p_conninfo.conns_amount()));
-        EXPECT_EQ(4, c_p_conninfo.conns_amount());
-        n_e(c_p_conninfo.conns_amount(), c_p_conninfo);
-        pull_conns(c_p_conninfo.conns_amount(), c_p_conninfo);
-    }
-    {
-        connection_pool c_p_conninfo{2, true, "dbname = pet_project_db"};
-        ASSERT_TRUE(static_cast<bool>(c_p_conninfo.conns_amount()));
-        EXPECT_EQ(2, c_p_conninfo.conns_amount());
-        n_e(c_p_conninfo.conns_amount(), c_p_conninfo);
-        pull_conns(c_p_conninfo.conns_amount(), c_p_conninfo);
-    }
-}
 
 TEST_F(connection_pool_testing, No_connections)
 {
@@ -283,7 +285,7 @@ TEST_F(DB_module_testing, Exec_command)
     ASSERT_TRUE(static_cast<bool>(pg_result->get_result()));
     EXPECT_EQ(PGRES_TUPLES_OK, PQresultStatus(pg_result->get_result()));
 }
-
+}   //namespace db_module_unit_tests
 
 
 

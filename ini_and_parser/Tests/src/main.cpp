@@ -15,9 +15,9 @@ const char* path_to_ini_file_wrong_key_name = "/home/nikita/C++/Pet_project/ini_
 
 TEST_F(ConfigSearchingTesting, Ctors)
 {
-    EXPECT_EQ(std::string{}, c_s_default.return_path());
-    EXPECT_EQ(std::string(valid_path_to_ini_file), c_s_c_string.return_path());
-    EXPECT_EQ(std::string(valid_path_to_ini_file), c_s_std_string.return_path());
+    EXPECT_EQ(c_s_default.return_path(), std::string{});
+    EXPECT_EQ(c_s_c_string.return_path(), std::string(valid_path_to_ini_file));
+    EXPECT_EQ(c_s_std_string.return_path(), std::string(valid_path_to_ini_file));
 }
 
 TEST(ConfigSearching, NoPathFound)
@@ -31,7 +31,7 @@ TEST(ConfigSearching, CSExceptionMessage)
         Config_searching{wrong_path_to_ini_file};
     }  catch (c_s_exception e) {
         std::string what_message = wrong_path_to_ini_file + std::string{" not founded"};
-        EXPECT_STREQ(what_message.c_str(), e.what());
+        EXPECT_STREQ(e.what(), what_message.c_str());
     }
 }
 
@@ -88,7 +88,7 @@ TYPED_TEST(ParserCopyCtor, CopyCtor)
 TYPED_TEST(ParserCStringCtor, ValidateAllOk)
 {
     auto temp_ok = std::make_pair<bool, std::string_view>(true, std::string_view{});
-    EXPECT_EQ(temp_ok, this->parser->validate_parsed());
+    EXPECT_EQ(this->parser->validate_parsed(), temp_ok);
 }
 
 TYPED_TEST(ParserValidateLess, ValidateLess)
@@ -101,7 +101,7 @@ TYPED_TEST(ParserValidateLess, ValidateLess)
     } else {
         temp_less = std::make_pair<bool, std::string_view>(false, std::string_view{"Parsed count of keywords is less than it needed"});
     }
-    EXPECT_EQ(temp_less, this->parser->validate_parsed());
+    EXPECT_EQ(this->parser->validate_parsed(), temp_less);
 }
 
 TYPED_TEST(ParserValidateWrongKeyName, ValidateWrongKeyName)
@@ -121,7 +121,7 @@ TYPED_TEST(ParserValidateWrongKeyName, ValidateWrongKeyName)
             }
         }
     }
-    EXPECT_EQ(temp_wrong_key_name, this->parser->validate_parsed());
+    EXPECT_EQ(this->parser->validate_parsed(), temp_wrong_key_name);
 }
 
 
