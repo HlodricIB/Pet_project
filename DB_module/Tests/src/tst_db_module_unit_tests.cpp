@@ -2,6 +2,9 @@
 
 namespace db_module_unit_tests
 {
+const char* tests_conninfo = "dbname = pet_project_db";
+const char* tests_DB_name = "pet_project_db";
+
 MockParser::MockParser()
 {
     ON_CALL(*this, parsed_info_ptr(_))
@@ -57,7 +60,7 @@ TEST_F(ConnectionPoolTesting, ConninfoCtorOneArgument)
 
     const int num_conns = 5;
     connection_pool c_p{num_conns};
-    ASSERT_EQ(c_p, num_conns);
+    ASSERT_EQ(c_p.conns_amount(), num_conns);
     check_conns(num_conns, c_p);
 }
 
@@ -65,14 +68,14 @@ TEST_F(ConnectionPoolTesting, ConninfoCtorBothArguments)
 {
     for (size_t i = 2; i < 5; i+=2)
     {
-        connection_pool c_p{i, "dbname = pet_project_db"};
-        ASSERT_EQ(c_p, i);
+        connection_pool c_p{i, tests_conninfo};
+        ASSERT_EQ(c_p.conns_amount(), i);
         check_conns(i, c_p);
     }
 
-    //Check conninfo ctor with wrong second (conninfo) argument
+    //Test conninfo ctor with wrong second (conninfo) argument
     connection_pool c_p{9, "dbname = wrong_db_name"};
-    ASSERT_EQ(c_p, 0);
+    ASSERT_EQ(c_p.conns_amount(), 0);
     EXPECT_FALSE(c_p.pull_connection(conn));
 }
 
@@ -81,58 +84,53 @@ TEST_F(ConnectionPoolTesting, ParserCtor)
     MockParserHelper mock_parser_helper;
     std::shared_ptr<Parser> mock_parser_shared_ptr = std::make_shared<MockParser>();
     EXPECT_CALL(*(std::dynamic_pointer_cast<MockParser>(mock_parser_shared_ptr)), parsed_info_ptr(_))
-            .Times(AtLeast(6))
+            .Times(AtLeast(8))
             .WillRepeatedly(Invoke(&mock_parser_helper, &MockParserHelper::returning_massives));
     ASSERT_TRUE(static_cast<bool>(mock_parser_shared_ptr->parsed_info_ptr('k')));
     ASSERT_TRUE(static_cast<bool>(mock_parser_shared_ptr->parsed_info_ptr('v')));
-    connection_pool c_p_parser(4, mock_parser_shared_ptr);
-    EXPECT_EQ(4, c_p_parser.conns_amount());
-    n_e(c_p_parser.conns_amount(), c_p_parser);
-    pull_conns(c_p_parser.conns_amount(), c_p_parser);
-}
-
-TEST_F(connection_pool_testing, Conns_amount)
-{
-    EXPECT_EQ(0, c_p_zero.conns_amount());
-
-    EXPECT_EQ(4, c_p_dft_conninfo.conns_amount());
-}
-
-
-
-TEST_F(connection_pool_testing, No_connections)
-{
-    MockParserHelper mock_parser_helper;
-    std::shared_ptr<Parser> mock_parser_shared_ptr = std::make_shared<MockParser>();
-    EXPECT_CALL(*(std::dynamic_pointer_cast<MockParser>(mock_parser_shared_ptr)), parsed_info_ptr(_))
-            .Times(10)
-            .WillRepeatedly(Invoke(&mock_parser_helper, &MockParserHelper::returning_massives_no_conns));
+    for (size_t i = 0; i < 7; i += 3)
     {
-        connection_pool c_p_no_conns(1, mock_parser_shared_ptr);
-        EXPECT_FALSE(static_cast<bool>(c_p_no_conns.conns_amount()));
+        connection_pool c_p{i, mock_parser_shared_ptr};
+        EXPECT_EQ(c_p.conns_amount(), i);
+        check_conns(i, c_p);
     }
 
+    connection_pool c_p{1, nullptr};
+    EXPECT_EQ(c_p.conns_amount(), 0);
+}
+
+TEST_F(ConnectionPoolTesting, PullPushConnections)
+{
+    for (size_t i = 2; i < 7; i += 2)
     {
-        connection_pool c_p_no_conns(1, false, "dbname = no_db");
-        EXPECT_FALSE(static_cast<bool>(c_p_no_conns.conns_amount()));
+        connection_pool c_p{i, tests_conninfo};
+        pull_push_connections_check(c_p.conns_amount(), c_p);
     }
 }
 
-TEST_F(connection_pool_testing, Pull_connection)
+TEST_F(ConnectionPoolTesting, ConnsAmount)
 {
-    connection_pool c_p_conninfo{9};
-    pull_conns(c_p_conninfo.conns_amount(), c_p_conninfo);
+    EXPECT_EQ(zero_connections.conns_amount(), 0);
+
+    EXPECT_EQ(default_constructed.conns_amount(), 1);
+
+    connection_pool c_p{3, tests_conninfo};
+    EXPECT_EQ(c_p.conns_amount(), 3);
 }
 
-TEST_F(connection_pool_testing, Push_connection)
+TEST_F(ConnectionPoolWarmingTesting, Warm)
 {
-    PGconn* conn = PQconnectdb("dbname = pet_project_db");
-    c_p_zero.push_connection(conn);
-    EXPECT_TRUE(c_p_zero.pull_connection(conn));
+    double not_warmed_duration{0}, warmed_duration{0};
+    warm_test(false, not_warmed_duration);
+    warm_test(true, warmed_duration);
+    //EXPECT_GT(not_warmed_duration, warmed_duration);
+    EXPECT_GT(not_warmed_duration, warmed_duration) << not_warmed_duration << "<" << warmed_duration;
+    std::cerr << not_warmed_duration << ">" << warmed_duration << std::endl;
+    //And now it's better to do warmed at first and unwarmed afterwards;
 }
 
 //*******************************************function_wrapper testing*******************************************
-TEST_F(function_wrapper_testing, Default_ctor_and_move_assign_operator)
+/*TEST_F(function_wrapper_testing, Default_ctor_and_move_assign_operator)
 {
     function_wrapper f_w_default;
     function_wrapper f_w(test_function1);
@@ -284,7 +282,7 @@ TEST_F(DB_module_testing, Exec_command)
     pg_result = res.get();
     ASSERT_TRUE(static_cast<bool>(pg_result->get_result()));
     EXPECT_EQ(PGRES_TUPLES_OK, PQresultStatus(pg_result->get_result()));
-}
+}*/
 }   //namespace db_module_unit_tests
 
 

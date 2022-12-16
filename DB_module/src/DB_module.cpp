@@ -158,12 +158,22 @@ void thread_pool::push_task_front(function_wrapper&& task)
 
 connection_pool::connection_pool(size_t conn_count, std::shared_ptr<Parser> p_DB)
 {
-    auto connect = [p_DB] ()->PGconn* { return PQconnectdbParams(p_DB->parsed_info_ptr('k'), p_DB->parsed_info_ptr('v'), 0); };
+    auto keys_ptr = p_DB->parsed_info_ptr('k');
+    auto values_ptr = p_DB->parsed_info_ptr('v');
+    if (keys_ptr == nullptr || values_ptr == nullptr)
+    {
+        return ;
+    }
+    auto connect = [keys_ptr, values_ptr] ()->PGconn* { return PQconnectdbParams(keys_ptr, values_ptr, 0); };
     make_connections(conn_count, connect);
 }
 
 connection_pool::connection_pool(size_t conn_count, const char* conninfo)
 {
+    if (conninfo == nullptr)
+    {
+        return ;
+    }
     auto connect = [conninfo] ()->PGconn* { return PQconnectdb(conninfo); };
     make_connections(conn_count, connect);
 }

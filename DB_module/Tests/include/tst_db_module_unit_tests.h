@@ -1,6 +1,9 @@
 #ifndef TST_DB_MODULE_UNIT_TESTS_H
 #define TST_DB_MODULE_UNIT_TESTS_H
 
+#include <cstdlib>
+#include <chrono>
+#include <sys/wait.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock-matchers.h>
 #include <gmock/gmock.h>
@@ -8,6 +11,9 @@
 
 namespace db_module_unit_tests
 {
+extern const char* tests_conninfo;
+extern const char* tests_DB_name;
+
 using namespace testing;
 using namespace parser;
 using namespace db_module;
@@ -27,8 +33,6 @@ public:
 
 class MockParser : public Parser
 {
-private:
-    MockParserHelper mock_parser_helper;
 public:
     MockParser();
     MOCK_METHOD(const char* const*, parsed_info_ptr, (char m), (const, override));
@@ -57,26 +61,100 @@ protected:
 
     void pull_push_connections_check(int amount, connection_pool& c_p)
     {
-        std::deque<PGconn*> temp(amount);
-        for (int i = 0; c_p.pull_connection(temp[i]); ++i);
-    }
-
-    void n_e(int amount, connection_pool& c_p)
-    {
-        std::deque<PGconn*> temp(amount);
-        for (int i = 0; c_p.pull_connection(temp[i]); ++i);
-        while (!temp.empty())
+        //Since container, that contains the PGconns (conns_deque) is private we need to do at least two cycles of pull_connection() and
+        //at least one cycle of push_connection() calls to test this methods
+        std::deque<PGconn*> temp1(amount);
+        std::deque<PGconn*> temp2(amount);
+        for (int i = 0; c_p.pull_connection(temp1[i]); ++i);
+        for (int i = 0; i != temp1.size(); ++i)
         {
-            PGconn* conn = temp.front();
-            EXPECT_THAT(temp, Contains(conn));
-            c_p.push_connection(conn);
-            temp.pop_front();
+            c_p.push_connection(temp1[i]);
         }
+        for (int i = 0; c_p.pull_connection(temp2[i]); ++i);
+        EXPECT_THAT(temp1, UnorderedElementsAreArray(temp2));
     }
 };
 
+//For cache clear we need to stop postgresql service, so, just in case, it is better to implement another fixture class for wram function
+//testing purposes, because in the ConnectionPoolTesting class we create two connection pools which keep opened connections to
+//postgresql database
+class ConnectionPoolWarmingTesting : public testing::Test
+{
+private:
+    void check_status(int status)
+    {
+        ASSERT_TRUE(WIFEXITED(status));
+        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
+    }
+protected:
+    //In order to use ASSERTION macros the return value of this function have to be void
+    void warm_test(bool if_warm, double& _duration)
+    {
+        //Clearing cache (just in case)
+        std::cout.flush();
+        //auto status = std::system("sudo service postgresql stop; sync; sudo sh -c \"echo 3 > /proc/sys/vm/drop_caches\"; sudo service postgresql start");
+        /*auto status = std::system("service postgresql stop");
+        check_status(status);
+        status = std::system("sync");
+        check_status(status);
+        status = std::system("gnome-terminal -- sh -c \"sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'\"; "
+                                                "echo \"Enter password in newely opened terminal, then press any key\"; read -s -n 1");
+        check_status(status);
+        status = std::system("service postgresql start");
+        check_status(status);*/
+        //auto status = std::system("gnome-terminal -- /home/nikita/C++/Pet_project/DB_module/Tests/warm.sh");
+        //auto status = std::system("sudo -S sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+        //status = std::system("echo 3 | sudo tee /proc/sys/vm/drop_caches");
+        //ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+        //ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
+        /*status = std::system("sync");
+        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
+        status = std::system("sudo -S sh -c \"echo 3 > /proc/sys/vm/drop_caches\"");
+        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
+        status = std::system("sudo -S service postgresql start");*/
+        //auto status = std::system("sudo -S service postgresql stop; sync; sudo sh -c \"echo 3 > /proc/sys/vm/drop_caches\"; sudo service postgresql start");
+        /*FILE  *cmd;
+            int    status;
 
+            //cmd = popen("gnome-terminal -- sh -c '/usr/bin/sudo id -un 2>/dev/null; sudo ls'", "w");
+            cmd = popen("sudo service postgresql stop; sudo service postgresql start", "w");
+            if (!cmd) {
+                fprintf(stderr, "Cannot run sudo: %s.\n", strerror(errno));
+                return;
+            }
 
+            //fprintf(cmd, "Password\n");
+            //fflush(cmd);
+            status = pclose(cmd);*/
+            //if (WIFEXITED(status)
+            auto s = WEXITSTATUS(status);
+            int t;
+            if (s == EXIT_SUCCESS)
+            {
+                t = 10;
+            }
+        connection_pool c_p{2, tests_conninfo};
+        if (if_warm)
+        {
+            c_p.warm(tests_DB_name, {"song_table", "log_table"});
+        }
+        PGconn* conn1{nullptr};
+        PGconn* conn2{nullptr};
+        c_p.pull_connection(conn1);
+        c_p.pull_connection(conn2);
+        auto start = std::chrono::high_resolution_clock::now();
+        auto res1 = PQexec(conn1, "SELECT * FROM song_table; SELECT * FROM log_table");
+        auto res2 = PQexec(conn2, "SELECT * FROM song_table; SELECT * FROM log_table");
+        auto stop = std::chrono::high_resolution_clock::now();
+        PQclear(res1);
+        PQclear(res2);
+        _duration = std::chrono::duration<double, std::micro>(stop - start).count();
+    }
+};
+/*
 class function_wrapper_testing : public testing::Test
 {
 protected:
@@ -134,7 +212,7 @@ protected:
         EXPECT_LT(0, conns_threads.first);
         EXPECT_LT(0, conns_threads.second);
     }
-};
+};*/
 }   //db_module_unit_tests
 
 #endif // TST_DB_MODULE_UNIT_TESTS_H

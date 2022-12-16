@@ -33,6 +33,7 @@ endif ()
 
 set(GTestFiles ${GTestSrc}/src/gtest-all.cc)
 set(GTestIncludes ${GTestSrc} ${GTestSrc}/include)
+set(Parser_SRC ../../ini_and_parser/src)
 set(Parser_INC ../../ini_and_parser/include)
 set(DB_module_SRC ../src)
 set(DB_module_INC ../include)
@@ -54,6 +55,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ./include/)
 
 add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 add_library(DB_module STATIC ${DB_module_SRC}/DB_module.cpp ${DB_module_INC}/DB_module.h)
+add_library(Parser STATIC ${Parser_SRC}/main.cpp ${Parser_SRC}/parser.cpp ${Parser_INC}/parser.h)
 target_link_libraries(DB_module PRIVATE PostgreSQL::PostgreSQL)
-target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads PostgreSQL::PostgreSQL DB_module)
+target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads PostgreSQL::PostgreSQL DB_module Parser)
 
