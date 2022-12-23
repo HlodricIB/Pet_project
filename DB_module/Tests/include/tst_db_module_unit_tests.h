@@ -76,7 +76,7 @@ protected:
 };
 
 //For cache clear we need to stop postgresql service, so, just in case, it is better to implement another fixture class for wram function
-//testing purposes, because in the ConnectionPoolTesting class we create two connection pools which keep opened connections to
+//testing purposes, because in the ConnectionPoolTesting class we create two connection pools which keeps opened connections to
 //postgresql database
 class ConnectionPoolWarmingTesting : public testing::Test
 {
@@ -88,54 +88,17 @@ private:
         ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
     }
 protected:
-    //In order to use ASSERTION macros the return value of this function have to be void
-    void warm_test(bool if_warm, double& _duration)
+    double warm_test(bool if_warm)
     {
-        //Clearing cache (just in case)
+        //Clearing cache
         std::cout.flush();
-        //auto status = std::system("sudo service postgresql stop; sync; sudo sh -c \"echo 3 > /proc/sys/vm/drop_caches\"; sudo service postgresql start");
-        /*auto status = std::system("service postgresql stop");
+        auto status = std::system("service postgresql stop");
         check_status(status);
-        status = std::system("sync");
-        check_status(status);
-        status = std::system("gnome-terminal -- sh -c \"sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'\"; "
-                                                "echo \"Enter password in newely opened terminal, then press any key\"; read -s -n 1");
+        status = std::system("sync && gnome-terminal --wait -- sh -c \"sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches\'\"");
         check_status(status);
         status = std::system("service postgresql start");
-        check_status(status);*/
-        //auto status = std::system("gnome-terminal -- /home/nikita/C++/Pet_project/DB_module/Tests/warm.sh");
-        //auto status = std::system("sudo -S sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
-        //status = std::system("echo 3 | sudo tee /proc/sys/vm/drop_caches");
-        //ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
-        //ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
-        /*status = std::system("sync");
-        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
-        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
-        status = std::system("sudo -S sh -c \"echo 3 > /proc/sys/vm/drop_caches\"");
-        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
-        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
-        status = std::system("sudo -S service postgresql start");*/
-        //auto status = std::system("sudo -S service postgresql stop; sync; sudo sh -c \"echo 3 > /proc/sys/vm/drop_caches\"; sudo service postgresql start");
-        /*FILE  *cmd;
-            int    status;
+        check_status(status);
 
-            //cmd = popen("gnome-terminal -- sh -c '/usr/bin/sudo id -un 2>/dev/null; sudo ls'", "w");
-            cmd = popen("sudo service postgresql stop; sudo service postgresql start", "w");
-            if (!cmd) {
-                fprintf(stderr, "Cannot run sudo: %s.\n", strerror(errno));
-                return;
-            }
-
-            //fprintf(cmd, "Password\n");
-            //fflush(cmd);
-            status = pclose(cmd);*/
-            //if (WIFEXITED(status)
-            auto s = WEXITSTATUS(status);
-            int t;
-            if (s == EXIT_SUCCESS)
-            {
-                t = 10;
-            }
         connection_pool c_p{2, tests_conninfo};
         if (if_warm)
         {
@@ -151,32 +114,38 @@ protected:
         auto stop = std::chrono::high_resolution_clock::now();
         PQclear(res1);
         PQclear(res2);
-        _duration = std::chrono::duration<double, std::micro>(stop - start).count();
+        return std::chrono::duration<double, std::micro>(stop - start).count();
     }
 };
-/*
-class function_wrapper_testing : public testing::Test
+
+class FunctionWrapperTesting : public testing::Test
 {
+    //To have access to protected function test_function2 we have to declare appropriate test as a friend
+    FRIEND_TEST(FunctionWrapperTesting, ReturnValue);
+private:
+    bool passed{false};
 protected:
-    static void test_function1() { std::cout << "Passed!" << std::endl; }
-public:
-    bool test_function2() { return true; }
+    function_wrapper f_w_default;
+    function_wrapper f_w{std::bind(&FunctionWrapperTesting::test_function1, this)};
+    void test_function1() { passed = true; }
+    bool test_function2() const { return true; }
+    bool get_passed() const {return passed;}
 };
 
-class thread_pool_testing : public testing::Test
+class ThreadPoolTesting : public testing::Test
 {
+    //To have access to protected function test_function_middle we have to declare appropriate test as a friend
+    FRIEND_TEST(ThreadPoolTesting, PushTaskFrontPushTaskBack);
 protected:
-    thread_pool t_p;
-    static constexpr auto lambda = [] ()->bool { return true; };
-public:
-    class test_functor {
-    public:
-        void operator()() { std::cout << "Passed!" << std::endl; }
+    using time_point = std::chrono::time_point<std::chrono::steady_clock>;
+    class test_functor_back {
+        time_point operator()() { return std::chrono::steady_clock::now(); }
     };
-    int test_function() { return 42; }
+    time_point test_function_middle() { return std::chrono::steady_clock::now(); }
+    bool pred(time_point t_front, time_point t_middle, time_point t_back) { return t_front > t_middle && t_middle  > t_back; }
 };
 
-class PG_result_testing : public testing::Test
+/*class PG_result_testing : public testing::Test
 {
 protected:
     PGconn* conn{nullptr};

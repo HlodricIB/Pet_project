@@ -54,7 +54,7 @@ private:
 public:
     template<typename F>
     function_wrapper(F&& f): impl(new impl_type<F>(std::move(f))) { }
-    void operator()() { impl->call(); }
+    void operator()();
     function_wrapper() = default;
     function_wrapper(function_wrapper&& other): impl(std::move(other.impl)) { }
     function_wrapper& operator=(function_wrapper&& other) { impl = std::move(other.impl); return *this; }
@@ -77,7 +77,7 @@ private:
     void worker_thread();
 public:
     thread_pool();  //Creates thread_pool with threads amount depending on std::thread::hardware_concurrency()
-    explicit thread_pool(size_t);    // If you want to create thread_pool with specified threads amount
+    explicit thread_pool(size_t);    // If you want to create thread_pool with specified threads amount, throws std::logic_error if specified amount is less than or equal to zero
     thread_pool(const thread_pool&) = delete;
     thread_pool& operator=(const thread_pool&) = delete;
     thread_pool(thread_pool&) = delete;

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstring>
 #include <climits>
+#include <stdexcept>
 #include "DB_module.h"
 
 namespace db_module
@@ -84,7 +85,11 @@ thread_pool::thread_pool()
 
 thread_pool::thread_pool(size_t threads_count)
 {
-    starting_threads(threads_count);
+    if (threads_count > 0)
+    {
+        starting_threads(threads_count);
+    }
+    throw std::logic_error("Specified threads amount is less than or equal to zero");
 }
 
 void thread_pool::starting_threads(size_t threads_count)
@@ -264,6 +269,16 @@ void connection_pool::warm(const std::string& DB_name, const std::vector<std::st
             }
         }
     }
+}
+
+//*******************************************function_wrapper*******************************************
+void function_wrapper::operator()()
+{
+    if (impl)
+    {
+        impl->call();
+    }
+    return ;
 }
 
 //*******************************************PG_result*******************************************

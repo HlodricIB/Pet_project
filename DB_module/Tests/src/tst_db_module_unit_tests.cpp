@@ -1,3 +1,4 @@
+#include <thread>
 #include "tst_db_module_unit_tests.h"
 
 namespace db_module_unit_tests
@@ -118,44 +119,54 @@ TEST_F(ConnectionPoolTesting, ConnsAmount)
     EXPECT_EQ(c_p.conns_amount(), 3);
 }
 
-TEST_F(ConnectionPoolWarmingTesting, Warm)
+//Due to the amount of time this test takes, it has been diasabled by adding the DISABLED_ prefix to its name.
+//To include disabled tests in test execution, just invoke the test program with the --gtest_also_run_disabled_tests flag
+//or remove DISABLED_ prefix
+TEST_F(ConnectionPoolWarmingTesting, DISABLED_Warm)
 {
-    double not_warmed_duration{0}, warmed_duration{0};
-    warm_test(false, not_warmed_duration);
-    warm_test(true, warmed_duration);
-    //EXPECT_GT(not_warmed_duration, warmed_duration);
-    EXPECT_GT(not_warmed_duration, warmed_duration) << not_warmed_duration << "<" << warmed_duration;
-    std::cerr << not_warmed_duration << ">" << warmed_duration << std::endl;
-    //And now it's better to do warmed at first and unwarmed afterwards;
+    auto not_warmed_duration_1 = warm_test(false);
+    auto warmed_duration_1 = warm_test(true);
+    EXPECT_GT(not_warmed_duration_1, warmed_duration_1) << not_warmed_duration_1 << "<" << warmed_duration_1;
+    //And now in reverse
+    auto warmed_duration_2 = warm_test(true);
+    auto not_warmed_duration_2 = warm_test(false);
+    EXPECT_GT(not_warmed_duration_2, warmed_duration_2) << not_warmed_duration_2 << "<" << warmed_duration_2;
+    std::cout << not_warmed_duration_1 << ">" << warmed_duration_1 << '\n'
+              << not_warmed_duration_2 << ">" << warmed_duration_2 << std::endl;
 }
 
 //*******************************************function_wrapper testing*******************************************
-/*TEST_F(function_wrapper_testing, Default_ctor_and_move_assign_operator)
+TEST_F(FunctionWrapperTesting, DefaultCtor)
 {
-    function_wrapper f_w_default;
-    function_wrapper f_w(test_function1);
-    f_w_default = std::move(f_w);
-    f_w_default();
+    //Test that we won't crash if no function passed to function wrapper
+    EXPECT_EXIT(f_w_default(); exit(0), testing::ExitedWithCode(0), "");
 }
 
-TEST_F(function_wrapper_testing, Ctor_and_call_operator)
+TEST_F(FunctionWrapperTesting, FCtorAndCallOperator)
 {
-    function_wrapper f_w{test_function1};
     f_w();
+    EXPECT_TRUE(get_passed());
 }
 
-TEST_F(function_wrapper_testing, Move_ctor)
+TEST_F(FunctionWrapperTesting, MoveCtorAndCallOperator)
 {
-    function_wrapper f_w(test_function1);
     function_wrapper f_w_move_ctor(std::move(f_w));
     f_w_move_ctor();
+    EXPECT_TRUE(get_passed());
 }
 
-TEST_F(function_wrapper_testing, Return_value)
+TEST_F(FunctionWrapperTesting, AssignAndCallOperators)
+{
+    f_w_default = std::move(f_w);
+    f_w_default();
+    EXPECT_TRUE(get_passed());
+}
+
+TEST_F(FunctionWrapperTesting, ReturnValue)
 {
     std::deque<function_wrapper> tasks;
     std::mutex m;
-    std::packaged_task<bool()> task((std::bind(&function_wrapper_testing::test_function2, this)));
+    std::packaged_task<bool()> task((std::bind(&FunctionWrapperTesting::test_function2, this)));
     std::future<bool> res(task.get_future());
     tasks.push_back(std::move(task));
     std::thread t([&tasks, &m] () {
@@ -170,40 +181,54 @@ TEST_F(function_wrapper_testing, Return_value)
 }
 
 //*******************************************thread_pool testing*******************************************
-TEST_F(thread_pool_testing, Default_ctor)
+TEST_F(ThreadPoolTesting, DefaultCtor)
 {
+    thread_pool t_p;
     ASSERT_NE(0, t_p.threads_amount());
 }
 
-TEST_F(thread_pool_testing, Size_t_ctor_and_threads_amount)
+TEST_F(ThreadPoolTesting, SizeTCtorAndThreadsAmount)
 {
-    thread_pool t_p_zero(0);
-    ASSERT_EQ(0, t_p_zero.threads_amount());
+    EXPECT_THROW(thread_pool(0), std::logic_error);
+
+    EXPECT_THROW(thread_pool(-5), std::logic_error);
 
     thread_pool t_p_two(2);
-    ASSERT_EQ(2, t_p_two.threads_amount());
+    ASSERT_EQ(t_p_two.threads_amount(), 2);
 
     thread_pool t_p_four(4);
-    ASSERT_EQ(4, t_p_four.threads_amount());
+    ASSERT_EQ(t_p_four.threads_amount(), 4);
 }
 
-TEST_F(thread_pool_testing, Push_task)
+TEST_F(ThreadPoolTesting, PushTaskFrontPushTaskBack)
 {
-    thread_pool tp;
-    test_functor t_f{};
-    std::packaged_task<bool()> task_bool(lambda);
-    std::future<bool> res_bool = task_bool.get_future();
-    std::packaged_task<void()> task_functor(t_f);
-    std::packaged_task<int()> task_int(std::bind(&thread_pool_testing::test_function, this));
-    std::future<int> res_int = task_int.get_future();
-    tp.push_task(std::move(task_bool));
-    tp.push_task(std::move(task_functor));
-    tp.push_task(std::move(task_int));
-    EXPECT_TRUE(res_bool.get());
-    EXPECT_EQ(42, res_int.get());
+    thread_pool tp{1};
+    auto lambda_sleep = [] { std::this_thread::sleep_for(std::chrono::seconds(3)); };
+    test_functor_back t_f;
+    auto lambda_front = [] ()->time_point { return std::chrono::steady_clock::now(); };
+    std::packaged_task<void()> task_sleep(lambda_sleep);
+    std::future<void> res_sleep = task_sleep.get_future();
+    std::packaged_task<time_point()> task_middle(std::bind(&ThreadPoolTesting::test_function_middle, this));
+    std::future<time_point> res_middle = task_middle.get_future();
+    std::packaged_task<time_point()> task_back(t_f);
+    std::future<time_point> res_back = task_back.get_future();
+    std::packaged_task<time_point()> task_front(lambda_front);
+    std::future<time_point> res_front = task_front.get_future();
+    tp.push_task_front(std::move(task_sleep));
+    tp.push_task_back(std::move(task_middle));
+    tp.push_task_back(std::move(task_back));
+    tp.push_task_front(std::move(task_front));
+    auto middle = res_middle.get();
+    res_sleep.get();
+    auto back = res_back.get();
+    auto front = res_front.get();
+    using namespace std::placeholders;
+    EXPECT_PRED3(std::bind(&ThreadPoolTesting::pred, this, _1, _2, _3), front, middle, back);
 }
 
-TEST_F(PG_result_testing, Default_ctor_and_get_result)
+//*******************************************PG_result testing*******************************************
+
+/*TEST_F(PG_result_testing, Default_ctor_and_get_result)
 {
     EXPECT_FALSE(static_cast<bool>(pg_res.get_result()));
 }
