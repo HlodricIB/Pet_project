@@ -181,13 +181,13 @@ TEST_F(FunctionWrapperTesting, ReturnValue)
 }
 
 //*******************************************thread_pool testing*******************************************
-TEST_F(ThreadPoolTesting, DefaultCtor)
+TEST(ThreadPoolNonFixtureTesting, DefaultCtor)
 {
     thread_pool t_p;
     ASSERT_NE(0, t_p.threads_amount());
 }
 
-TEST_F(ThreadPoolTesting, SizeTCtorAndThreadsAmount)
+TEST(ThreadPoolNonFixtureTesting, SizeTCtorAndThreadsAmount)
 {
     EXPECT_THROW(thread_pool(0), std::logic_error);
 
@@ -227,6 +227,24 @@ TEST_F(ThreadPoolTesting, PushTaskFrontPushTaskBack)
 }
 
 //*******************************************PG_result testing*******************************************
+TEST_F(PGResultTesting, DefaultCtor)
+{
+    EXPECT_FALSE(static_cast<bool>(pg_res_default.get_result_ptr()));
+    EXPECT_THAT(pg_res_default.get_result_container(), SizeIs(1));
+    EXPECT_THAT(pg_res_default.get_result_container()[0], SizeIs(0));
+    EXPECT_EQ(pg_res_default.get_result_command_tag(), std::numeric_limits<int>::max());
+    EXPECT_STREQ(pg_res_default.get_result_single(), nullptr);
+    EXPECT_EQ(pg_res_default.get_columns_number(), 0);
+    EXPECT_EQ(pg_res_default.get_rows_number(), 0);
+    EXPECT_EQ(pg_res_default.res_error(), std::string{});
+    EXPECT_FALSE(pg_res_default.res_succeed());
+    EXPECT_EQ(pg_res_default.res_DB_name(), std::string{});
+}
+
+TEST_F(PGResultTesting, Path)
+{
+
+}
 
 /*TEST_F(PG_result_testing, Default_ctor_and_get_result)
 {

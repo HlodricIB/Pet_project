@@ -129,7 +129,7 @@ protected:
     function_wrapper f_w{std::bind(&FunctionWrapperTesting::test_function1, this)};
     void test_function1() { passed = true; }
     bool test_function2() const { return true; }
-    bool get_passed() const {return passed;}
+    bool get_passed() const { return passed; }
 };
 
 class ThreadPoolTesting : public testing::Test
@@ -138,25 +138,32 @@ class ThreadPoolTesting : public testing::Test
     FRIEND_TEST(ThreadPoolTesting, PushTaskFrontPushTaskBack);
 protected:
     using time_point = std::chrono::time_point<std::chrono::steady_clock>;
-    class test_functor_back {
+    struct test_functor_back
+    {
         time_point operator()() { return std::chrono::steady_clock::now(); }
     };
     time_point test_function_middle() { return std::chrono::steady_clock::now(); }
-    bool pred(time_point t_front, time_point t_middle, time_point t_back) { return t_front > t_middle && t_middle  > t_back; }
+    bool pred(time_point t_front, time_point t_middle, time_point t_back) { return t_front < t_middle && t_middle  < t_back; }
 };
 
-/*class PG_result_testing : public testing::Test
+class PGResultTesting : public testing::Test
 {
 protected:
     PGconn* conn{nullptr};
     PGresult* res{nullptr};
-    PG_result pg_res;
+    PG_result pg_res_default;
+    PG_result pg_res{res, tests_DB_name};
     void SetUp() override
     {
-        conn = PQconnectdb("dbname = pet_project_db");
+        /*conn = PQconnectdb(tests_conninfo);
         ASSERT_EQ(CONNECTION_OK, PQstatus(conn));
         res = PQexec(conn, "SELECT * FROM song_table");
-        ASSERT_EQ(PGRES_TUPLES_OK, PQresultStatus(res));
+        ASSERT_EQ(PGRES_TUPLES_OK, PQresultStatus(res));*/
+        auto path1 = std::filesystem::relative("Pet_project/scripts_for_tests_DB");
+        auto path2 = std::filesystem::proximate("Pet_project/scripts_for_tests_DB");
+        //auto path1_abs = std::filesystem::absolute(path1);
+        auto path2_abs = std::filesystem::absolute(path2);
+        int t;
     }
 
     void TearDown() override
@@ -165,7 +172,7 @@ protected:
     }
 };
 
-class DB_module_testing : public testing::Test
+/*class DB_module_testing : public testing::Test
 {
 protected:
     MockParserHelper mock_parser_helper;

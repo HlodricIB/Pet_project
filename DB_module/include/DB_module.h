@@ -101,14 +101,14 @@ private:
 public:
     using result_container = std::vector<std::vector<std::pair<const char*, size_t>>>;
     PG_result() { }
-    PG_result(PGresult*, const std::string);
+    PG_result(PGresult*, const std::string);    //Second argument is database name that PGresult* is related to
     PG_result(PG_result&&);
     PG_result& operator=(PG_result&&);
     ~PG_result();
     void display_exec_result();
     const PGresult* get_result_ptr() const { return result; }
     result_container get_result_container() const;
-    int get_result_command_tag() const { return std::atoi(PQcmdStatus(result)); }
+    int get_result_command_tag() const;
     char* get_result_single() const { return PQgetvalue(result, 0, 0); }
     int get_columns_number() const { return nFields; }
     int get_rows_number() const { return nTuples; }

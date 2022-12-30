@@ -88,8 +88,9 @@ thread_pool::thread_pool(size_t threads_count)
     if (threads_count > 0)
     {
         starting_threads(threads_count);
+    } else {
+        throw std::logic_error("Specified threads amount is less than or equal to zero");
     }
-    throw std::logic_error("Specified threads amount is less than or equal to zero");
 }
 
 void thread_pool::starting_threads(size_t threads_count)
@@ -375,6 +376,16 @@ PG_result::result_container PG_result::get_result_container() const
         outer_res_cntnr.emplace_back(std::move(inner_res_cntnr));
     }
     return outer_res_cntnr;
+}
+
+int PG_result::get_result_command_tag() const
+{
+    if (result)
+    {
+        return std::atoi(PQcmdStatus(result));
+    } else {
+        return std::numeric_limits<int>::max();
+    }
 }
 
 const std::string PG_result::res_error() const
