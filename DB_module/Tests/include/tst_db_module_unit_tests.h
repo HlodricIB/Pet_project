@@ -18,6 +18,16 @@ using namespace testing;
 using namespace parser;
 using namespace db_module;
 
+//Helper class to determine absolute path to "Pet_project/the_directory_specified_in_constructor" dir
+class Pet_project_path
+{
+private:
+    std::string path;
+public:
+    Pet_project_path(std::string);
+    std::string return_full_path() { return path; }
+};
+
 class MockParserHelper
 {
 private:
@@ -151,10 +161,13 @@ class PGResultTesting : public testing::Test
 protected:
     PGconn* conn{nullptr};
     PGresult* res{nullptr};
+    Pet_project_path path{"scripts_for_tests_DB/create_tests_db.sh"};
     PG_result pg_res_default;
     PG_result pg_res{res, tests_DB_name};
     void SetUp() override
     {
+        std::string run_script = "sh " + path.return_full_path();
+        std::system(path.return_full_path().c_str());
         /*conn = PQconnectdb(tests_conninfo);
         ASSERT_EQ(CONNECTION_OK, PQstatus(conn));
         res = PQexec(conn, "SELECT * FROM song_table");
@@ -162,7 +175,7 @@ protected:
         auto path1 = std::filesystem::relative("Pet_project/scripts_for_tests_DB");
         auto path2 = std::filesystem::proximate("Pet_project/scripts_for_tests_DB");
         //auto path1_abs = std::filesystem::absolute(path1);
-        auto path2_abs = std::filesystem::absolute(path2);
+        auto path2_abs = std::filesystem::absolute("Pet_project");
         int t;
     }
 

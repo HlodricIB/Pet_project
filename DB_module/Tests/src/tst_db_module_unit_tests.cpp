@@ -1,10 +1,34 @@
 #include <thread>
+#include <filesystem>
 #include "tst_db_module_unit_tests.h"
 
 namespace db_module_unit_tests
 {
 const char* tests_conninfo = "dbname = pet_project_db";
 const char* tests_DB_name = "pet_project_db";
+
+Pet_project_path::Pet_project_path(std::string path_)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto curr_path = fs::current_path(ec);
+    if (!ec)
+    {
+        fs::path actual_path;
+        auto iter_find = std::find(curr_path.begin(), curr_path.end(), "Pet_project");
+        if (iter_find != curr_path.end())
+        {
+            ++iter_find;
+            auto iter = curr_path.begin();
+            while (iter != iter_find)
+            {
+                actual_path /= *iter++;
+            }
+            actual_path /= path_;
+            path = actual_path.string();
+        }
+    }
+}
 
 MockParser::MockParser()
 {
