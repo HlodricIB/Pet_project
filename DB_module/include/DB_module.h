@@ -77,7 +77,7 @@ private:
     void worker_thread();
 public:
     thread_pool();  //Creates thread_pool with threads amount depending on std::thread::hardware_concurrency()
-    explicit thread_pool(size_t);    // If you want to create thread_pool with specified threads amount, throws std::logic_error if specified amount is less than or equal to zero
+    explicit thread_pool(int);    // If you want to create thread_pool with specified threads amount, throws std::logic_error if specified amount is less than or equal to zero
     thread_pool(const thread_pool&) = delete;
     thread_pool& operator=(const thread_pool&) = delete;
     thread_pool(thread_pool&) = delete;
@@ -102,8 +102,8 @@ public:
     using result_container = std::vector<std::vector<std::pair<const char*, size_t>>>;
     PG_result() { }
     PG_result(PGresult*, const std::string);    //Second argument is database name that PGresult* is related to
-    PG_result(PG_result&&);
-    PG_result& operator=(PG_result&&);
+    PG_result(PG_result&&); //Copy ctor is not auto generated
+    PG_result& operator=(PG_result&&);  //Copy assignment operator is not auto generated
     ~PG_result();
     void display_exec_result();
     const PGresult* get_result_ptr() const { return result; }

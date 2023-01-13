@@ -24,8 +24,8 @@ class Pet_project_path
 private:
     std::string path;
 public:
-    Pet_project_path(std::string);
-    std::string return_full_path() { return path; }
+    Pet_project_path(std::string);  //The argument is a relative (with respect to the absolute path to Pet_project) path required
+    std::string return_full_path() const { return path; }
 };
 
 class MockParserHelper
@@ -85,29 +85,25 @@ protected:
     }
 };
 
+//Function for checking status that std::system returns
+void check_status(int);
+
 //For cache clear we need to stop postgresql service, so, just in case, it is better to implement another fixture class for wram function
 //testing purposes, because in the ConnectionPoolTesting class we create two connection pools which keeps opened connections to
 //postgresql database
 class ConnectionPoolWarmingTesting : public testing::Test
 {
-private:
-    void check_status(int status)
-    {
-        ASSERT_TRUE(WIFEXITED(status));
-        ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
-        ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
-    }
 protected:
     double warm_test(bool if_warm)
     {
         //Clearing cache
         std::cout.flush();
         auto status = std::system("service postgresql stop");
-        check_status(status);
+        db_module_unit_tests::check_status(status);
         status = std::system("sync && gnome-terminal --wait -- sh -c \"sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches\'\"");
-        check_status(status);
+        db_module_unit_tests::check_status(status);
         status = std::system("service postgresql start");
-        check_status(status);
+        db_module_unit_tests::check_status(status);
 
         connection_pool c_p{2, tests_conninfo};
         if (if_warm)
@@ -160,29 +156,64 @@ class PGResultTesting : public testing::Test
 {
 protected:
     PGconn* conn{nullptr};
-    PGresult* res{nullptr};
-    Pet_project_path path{"scripts_for_tests_DB/create_tests_db.sh"};
+
+    Pet_project_path path{"scripts_for_tests_DB"};
     PG_result pg_res_default;
-    PG_result pg_res{res, tests_DB_name};
     void SetUp() override
     {
-        std::string run_script = "sh " + path.return_full_path();
-        std::system(path.return_full_path().c_str());
-        /*conn = PQconnectdb(tests_conninfo);
-        ASSERT_EQ(CONNECTION_OK, PQstatus(conn));
-        res = PQexec(conn, "SELECT * FROM song_table");
-        ASSERT_EQ(PGRES_TUPLES_OK, PQresultStatus(res));*/
-        auto path1 = std::filesystem::relative("Pet_project/scripts_for_tests_DB");
-        auto path2 = std::filesystem::proximate("Pet_project/scripts_for_tests_DB");
-        //auto path1_abs = std::filesystem::absolute(path1);
-        auto path2_abs = std::filesystem::absolute("Pet_project");
-        int t;
+        ASSERT_NE(path.return_full_path(), std::string{});
+        //gnome-terminal --wait -- sh -c 'cd /home/nikita/C++/Pet_project/scripts_for_tests_DB; sh create_tests_db.sh'
+        std::string run_script = "gnome-terminal --wait -- sh -c 'cd " + path.return_full_path() + "; sh create_tests_db.sh'";
+        auto status = std::system(run_script.c_str());
+        db_module_unit_tests::check_status(status);
+        conn = PQconnectdb(tests_conninfo);
+        ASSERT_EQ(PQstatus(conn), CONNECTION_OK);
     }
 
     void TearDown() override
     {
        PQfinish(conn);
     }
+};
+
+class PGResultTestingQueried : public PGResultTesting
+{
+protected:
+    PGresult* res_song{nullptr};
+    PGresult* res_log{nullptr};
+    std::shared_ptr<PG_result> pg_res_song{nullptr};
+    std::shared_ptr<PG_result> pg_res_log{nullptr};
+    void moving_check(PG_result&, std::shared_ptr<PG_result>, PGresult*);
+    void SetUp() override
+    {
+        PGResultTesting::SetUp();
+        res_song = PQexec(conn, "SELECT * FROM song_table");
+        ASSERT_EQ(PQresultStatus(res_song), PGRES_TUPLES_OK);
+        res_log = PQexec(conn, "SELECT * FROM log_table");
+        ASSERT_EQ(PQresultStatus(res_log), PGRES_TUPLES_OK);
+        pg_res_song = std::make_shared<PG_result>(res_song, tests_DB_name);
+        pg_res_log = std::make_shared<PG_result>(res_log, tests_DB_name);
+    }
+};
+
+class PGResultTestingResultContainer : public PGResultTestingQueried
+{
+protected:
+    const std::vector<std::vector<const char*>> song_table{
+        { "id", "song_name", "song_uid", "song_url" },
+        { "1", "song1.wav", "11111", "/some_dir/1" },
+        { "2", "song2.mp3", "11112", "/some_dir/2" },
+        { "3", "song3.aac", "11113", "/some_dir/3" },
+        { "4", "song4", "11114", "/some_dir/4" }
+    };
+    const std::vector<std::vector<const char*>> log_table{
+        { "id", "requested_host", "port", "ip", "user_agent", "rest_method", "target", "req_date_time" },
+        { "1", "127.0.0.41:8080", "11111", "127.0.0.1", "tests_client_1", "METHOD_1", "target_1", "2022-12-21 10:15:20" },
+        { "2", "127.0.0.42:8080", "11112", "127.0.0.2", "tests_client_2", "METHOD_2", "target_2", "2022-12-21 12:15:20" },
+        { "3", "127.0.0.43:8080", "11113", "127.0.0.3", "tests_client_3", "METHOD_3", "target_3", "2022-12-21 13:15:20" },
+        { "4", "127.0.0.44:8080", "11114", "127.0.0.4", "tests_client_4", "METHOD_4", "target_4", "2022-12-23 14:15:20" }
+    };
+    void result_container_check(const std::vector<std::vector<const char*>>&, const ::db_module::PG_result::result_container&);
 };
 
 /*class DB_module_testing : public testing::Test

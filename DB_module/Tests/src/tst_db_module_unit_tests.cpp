@@ -4,8 +4,8 @@
 
 namespace db_module_unit_tests
 {
-const char* tests_conninfo = "dbname = pet_project_db";
-const char* tests_DB_name = "pet_project_db";
+const char* tests_conninfo = "dbname = pet_project_tests_db";
+const char* tests_DB_name = "pet_project_tests_db";
 
 Pet_project_path::Pet_project_path(std::string path_)
 {
@@ -27,6 +27,8 @@ Pet_project_path::Pet_project_path(std::string path_)
             actual_path /= path_;
             path = actual_path.string();
         }
+    } else {
+        std::cerr << "Current path definition error: " << ec.message() << std::endl;
     }
 }
 
@@ -141,6 +143,13 @@ TEST_F(ConnectionPoolTesting, ConnsAmount)
 
     connection_pool c_p{3, tests_conninfo};
     EXPECT_EQ(c_p.conns_amount(), 3);
+}
+
+void check_status(int status)
+{
+    ASSERT_TRUE(WIFEXITED(status));
+    ASSERT_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
+    ASSERT_FALSE(static_cast<bool>(WIFSIGNALED(status)));
 }
 
 //Due to the amount of time this test takes, it has been diasabled by adding the DISABLED_ prefix to its name.
@@ -265,45 +274,74 @@ TEST_F(PGResultTesting, DefaultCtor)
     EXPECT_EQ(pg_res_default.res_DB_name(), std::string{});
 }
 
-TEST_F(PGResultTesting, Path)
+TEST_F(PGResultTestingQueried, PGresultStdStringCtor)
 {
-
+    ASSERT_EQ(pg_res_song->get_result_ptr(), res_song);
+    ASSERT_EQ(pg_res_log->get_result_ptr(), res_log);
+    EXPECT_STREQ(pg_res_song->res_DB_name().c_str(), tests_DB_name);
+    EXPECT_STREQ(pg_res_log->res_DB_name().c_str(), tests_DB_name);
 }
 
-/*TEST_F(PG_result_testing, Default_ctor_and_get_result)
+void PGResultTestingQueried::moving_check(PG_result& moved, std::shared_ptr<PG_result> original, PGresult* _pg_result)
 {
-    EXPECT_FALSE(static_cast<bool>(pg_res.get_result()));
+    EXPECT_EQ(moved.get_result_ptr(), _pg_result);
+    EXPECT_EQ(moved.res_DB_name(), tests_DB_name);
+    EXPECT_NE(moved.get_columns_number(), 0);
+    EXPECT_NE(moved.get_rows_number(), 0);
+    EXPECT_TRUE(moved.res_succeed());
+    EXPECT_EQ(original->get_result_ptr(), nullptr);
+    EXPECT_EQ(original->res_DB_name().c_str(), std::string{});
+    EXPECT_EQ(original->get_columns_number(), 0);
+    EXPECT_EQ(original->get_rows_number(), 0);
+    EXPECT_FALSE(original->res_succeed());
 }
 
-TEST_F(PG_result_testing, PGresult_pointer_ctor)
+TEST_F(PGResultTestingQueried, MoveCtor)
 {
-    PG_result p_r{res};
-    EXPECT_EQ(res, p_r.get_result());
+    PG_result moved_song(std::move(*pg_res_song));
+    moving_check(moved_song, pg_res_song, res_song);
+    PG_result moved_log(std::move(*pg_res_log));
+    moving_check(moved_log, pg_res_log, res_log);
 }
 
-TEST_F(PG_result_testing, Move_ctor)
+TEST_F(PGResultTestingQueried, MoveAssignmentOperator)
 {
-    PG_result p_r{res};
-    PG_result p_r_moved(std::move(p_r));
-    EXPECT_FALSE(static_cast<bool>(p_r.get_result()));
-    EXPECT_TRUE(static_cast<bool>(p_r_moved.get_result()));
+    pg_res_default = std::move(*pg_res_song);
+    moving_check(pg_res_default, pg_res_song, res_song);
+    //Self assignment checking
+    *pg_res_log = std::move(*pg_res_log);
+    EXPECT_EQ(pg_res_log->get_result_ptr(), res_log);
+    EXPECT_EQ(pg_res_log->res_DB_name(), tests_DB_name);
+    EXPECT_NE(pg_res_log->get_columns_number(), 0);
+    EXPECT_NE(pg_res_log->get_rows_number(), 0);
+    EXPECT_TRUE(pg_res_log->res_succeed());
 }
 
-TEST_F(PG_result_testing, Move_assign_operator)
+void PGResultTestingResultContainer::result_container_check(const std::vector<std::vector<const char*>>& container_to_match,
+                                                                const ::db_module::PG_result::result_container& res)
 {
-    PG_result p_r{res};
-    pg_res = std::move(p_r);
-    EXPECT_FALSE(static_cast<bool>(p_r.get_result()));
-    EXPECT_TRUE(static_cast<bool>(pg_res.get_result()));
+    ASSERT_THAT(res, SizeIs(container_to_match.size()));
+    for (size_t i = 0; i != container_to_match.size(); ++i)
+    {
+        ASSERT_THAT(res[i], SizeIs(container_to_match[i].size()));
+        for (size_t j = 0; j != container_to_match[i].size(); ++j)
+        {
+            EXPECT_STREQ(res[i][j].first, container_to_match[i][j]);
+            EXPECT_EQ(res[i][j].second, std::strlen(container_to_match[i][j]));
+        }
+    }
 }
 
-TEST_F(PG_result_testing, Display_exec_result)
+TEST_F(PGResultTestingResultContainer, GetResultContainer)
 {
-    //NOT TESTED YET DUE TO HUGE POSSIBILITY OF CHANGING!
+    auto song_container = pg_res_song->get_result_container();
+    result_container_check(song_table, song_container);
+    auto log_container = pg_res_log->get_result_container();
+    result_container_check(log_table, log_container);
 }
 
 //*******************************************DB_module testing*******************************************
-TEST_F(DB_module_testing, Parser_ctor)
+/*TEST_F(DB_module_testing, Parser_ctor)
 {
     EXPECT_CALL(*(std::dynamic_pointer_cast<MockParser>(mock_parser_shared_ptr)), parsed_info_ptr(_))
             .Times(AtLeast(2))

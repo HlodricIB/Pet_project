@@ -83,7 +83,7 @@ thread_pool::thread_pool()
     starting_threads(threads_count);
 }
 
-thread_pool::thread_pool(size_t threads_count)
+thread_pool::thread_pool(int threads_count)
 {
     if (threads_count > 0)
     {
@@ -307,11 +307,13 @@ void PG_result::construct_assign(PG_result&& other)
 {
     result = other.result;
     other.result = nullptr;
-    success = std::move(other.success);
+    success = other.success;
     other.success = false;
     DB_name = std::move(other.DB_name);
-    nFields = std::move(other.nFields);
-    nTuples = std::move(other.nTuples);
+    nFields = other.nFields;
+    other.nFields = 0;
+    nTuples = other.nTuples;
+    other.nTuples = 0;
 }
 
 PG_result& PG_result::operator=(PG_result&& rhs)
