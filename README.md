@@ -10,7 +10,7 @@
 - **Server_HTTP** - многопоточный HTTP сервер на Boost.Asio и Boost.Beast c применением stackless coroutines, приём и обработка запросов на выдачу списка доступных файлов, таблицы логов, самих файлов.  
 - **ini_and_parser** - содержит файл для конфигурации всех комопонентов сервиса и классы для парсинга конфигурационного файла.
 - **ini_and_parser/Tests** - Unit-тесты (применяется GoogleTest framework) парсера конфигурационного файла.
-- **DB_module/Tests/** - Unit-тесты (применяется GoogleTest framework) модуля для работы с БД (DB_module).
+- **DB_module/Tests** - Unit-тесты (применяется GoogleTest framework) модуля для работы с БД (DB_module).
 - **logs_folder** - директория для хранения файлов с логами.  
 - **scripts_for_DB** - bash скрипты для создания БД и таблиц для сервиса.  
 - **songs_folder** - директория для хранения доступных файлов.
