@@ -118,7 +118,7 @@ private:
     bool set_params_file_body_parser(b_b_http::response_parser<b_b_http::file_body>&, const std::filesystem::path&); //Second argument is a reference to download dir the appropriate
                                                                                                                      //directory for the corresponding host and port
 public:
-    explicit Client_HTTP(std::shared_ptr<Parser>);
+    explicit Client_HTTP(std::shared_ptr<::parser::Parser>);
     Client_HTTP(const Client_HTTP&) = delete;
     Client_HTTP(Client_HTTP&) = delete;
     Client_HTTP& operator=(const Client_HTTP&) = delete;
